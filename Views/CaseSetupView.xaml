@@ -1,0 +1,58 @@
+<UserControl x:Class="KapeAnalyser.WPF.Views.CaseSetupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <TextBlock Text="Case setup" Style="{StaticResource SectionTitle}"/>
+
+        <TextBlock Text="Case name" Style="{StaticResource FieldLabel}"/>
+        <TextBox Text="{Binding Config.CaseName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,14"/>
+
+        <TextBlock Text="Analyst name" Style="{StaticResource FieldLabel}"/>
+        <TextBox Text="{Binding Config.AnalystName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,14"/>
+
+        <TextBlock Text="Case folder" Style="{StaticResource FieldLabel}"/>
+        <Grid Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox Text="{Binding Config.CaseFolderPath}" IsReadOnly="True" Margin="0,0,8,0"/>
+            <Button Grid.Column="1" Content="Browse…" Style="{StaticResource StandardButton}" Command="{Binding BrowseCommand}"/>
+            <Button Grid.Column="2" Content="Rescan" Style="{StaticResource StandardButton}" Margin="8,0,0,0" Command="{Binding RescanCommand}"/>
+        </Grid>
+        <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,14"
+                   Text="Put each host's KAPE module output in its own folder, e.g. Case\Kape\WS01\ (EventLogs, ProgramExecution, FileSystem, Registry, …). Any depth works; folders named after DFIR ORC archives (ORC_WorkStation_WS01_…) are fine."/>
+
+        <TextBlock Text="Hosts detected" Style="{StaticResource FieldLabel}"/>
+        <StackPanel Margin="0,0,0,6" Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}}">
+            <ProgressBar IsIndeterminate="True" Height="4" Margin="0,0,0,4" Foreground="{StaticResource AccentBrush}"/>
+        </StackPanel>
+        <TextBlock Text="{Binding ScanStatus}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+        <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                CornerRadius="4" Padding="10,8" Margin="0,0,0,20" MinHeight="64">
+            <ItemsControl ItemsSource="{Binding DetectedHosts}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,1"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+
+        <Separator/>
+
+        <TextBlock Text="Date range filter for findings (optional, UTC)" Style="{StaticResource FieldLabel}"/>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <DatePicker SelectedDate="{Binding Config.FilterFrom}" Height="32"/>
+            <TextBlock Grid.Column="1" Text="to" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="10,0"/>
+            <DatePicker Grid.Column="2" SelectedDate="{Binding Config.FilterTo}" Height="32"/>
+        </Grid>
+    </StackPanel>
+</UserControl>

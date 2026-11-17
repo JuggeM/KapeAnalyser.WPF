@@ -1,0 +1,80 @@
+<Window x:Class="KapeAnalyser.WPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:KapeAnalyser.WPF.ViewModels"
+        xmlns:views="clr-namespace:KapeAnalyser.WPF.Views"
+        Title="CSIRT KAPE Analyser"
+        Height="660" Width="980"
+        MinHeight="560" MinWidth="820"
+        WindowStartupLocation="CenterScreen"
+        Background="White">
+
+    <Window.DataContext>
+        <vm:MainViewModel/>
+    </Window.DataContext>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Padding="14,16,14,14"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                    <StackPanel>
+                        <TextBlock Text="CSIRT KAPE Analyser" FontSize="14" FontWeight="SemiBold"/>
+                        <TextBlock Text="DFIR ORC → KAPE → findings" FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border DockPanel.Dock="Bottom" Padding="12">
+                    <Button Content="▶  Run analysis" Style="{StaticResource PrimaryButton}"
+                            Command="{Binding RunCommand}" IsEnabled="{Binding CanRun}" Height="36"/>
+                </Border>
+
+                <StackPanel Margin="0,8,0,0">
+                    <RadioButton Content="Case setup" Style="{StaticResource NavButton}" IsChecked="True"
+                                 Command="{Binding NavigateCommand}" CommandParameter="CaseSetup"/>
+                    <RadioButton Content="Modules" Style="{StaticResource NavButton}"
+                                 Command="{Binding NavigateCommand}" CommandParameter="Modules"/>
+                    <RadioButton Content="Detection" Style="{StaticResource NavButton}"
+                                 Command="{Binding NavigateCommand}" CommandParameter="Detection"/>
+                    <RadioButton Content="IOCs" Style="{StaticResource NavButton}"
+                                 Command="{Binding NavigateCommand}" CommandParameter="Iocs"/>
+                    <RadioButton Content="Output" Style="{StaticResource NavButton}"
+                                 Command="{Binding NavigateCommand}" CommandParameter="Output"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="24,20">
+            <ContentControl>
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ActivePanel}" Value="CaseSetup">
+                                <Setter Property="Content"><Setter.Value><views:CaseSetupView/></Setter.Value></Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ActivePanel}" Value="Modules">
+                                <Setter Property="Content"><Setter.Value><views:ModulesView/></Setter.Value></Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ActivePanel}" Value="Detection">
+                                <Setter Property="Content"><Setter.Value><views:DetectionView/></Setter.Value></Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ActivePanel}" Value="Iocs">
+                                <Setter Property="Content"><Setter.Value><views:IocView/></Setter.Value></Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ActivePanel}" Value="Output">
+                                <Setter Property="Content"><Setter.Value><views:OutputView/></Setter.Value></Setter>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ContentControl.Style>
+            </ContentControl>
+        </ScrollViewer>
+    </Grid>
+</Window>

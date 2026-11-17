@@ -1,0 +1,121 @@
+<UserControl x:Class="KapeAnalyser.WPF.Views.ModulesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <TextBlock Text="Modules" Style="{StaticResource SectionTitle}"/>
+        <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,14"
+                   Text="Which KAPE module outputs to analyse. Files are recognised by the EZ Tools output name, wherever they sit under the host folder. Run KAPE with the !EZParser compound module (or the individual modules below) against the ORC collection."/>
+        <UniformGrid Columns="2">
+            <Border Style="{StaticResource ParserCard}" Margin="0,0,6,8" ToolTip="Logons and brute force (4624/4625/4771/4776), RDP (4624 type 10, 1149, 21/25), accounts and privileged groups, services (7045/4697), scheduled tasks (4698), process command lines (4688, Sysmon 1), PowerShell script blocks (4104), Defender detections and tampering, log clearing (1102/104), Kerberoasting, admin shares, WMI subscriptions, BITS.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Event logs" FontWeight="Medium"/>
+                        <TextBlock Text="EvtxECmd: *_EvtxECmd_Output.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseEventLogs}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="6,0,0,8" ToolTip="Programs that ran: known attacker and dual-use tools, executables run from staging folders (Temp, Public, PerfLogs, ProgramData, drive root). Uses all eight run times.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Prefetch" FontWeight="Medium"/>
+                        <TextBlock Text="PECmd: *_PECmd_Output.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalysePrefetch}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="0,0,6,8" ToolTip="Binaries present or run, with SHA1 for IOC matching and threat-intel lookups.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Amcache" FontWeight="Medium"/>
+                        <TextBlock Text="AmcacheParser: *_Amcache_*FileEntries.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseAmcache}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="6,0,0,8" ToolTip="Binaries the system saw. Times are file modification times, not run times.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="ShimCache" FontWeight="Medium"/>
+                        <TextBlock Text="AppCompatCacheParser: *AppCompatCache*.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseShimcache}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="0,0,6,8" ToolTip="Autoruns, services, UserAssist, BAM, RunMRU and every other batch value checked for tools, staging paths and attack command lines; Defender exclusions; host name and IP addresses.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Registry" FontWeight="Medium"/>
+                        <TextBlock Text="RECmd batch: *_RECmd_Batch_*_Output.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseRegistry}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="6,0,0,8" ToolTip="Files users opened: tools, staging folders, malicious shortcut arguments, admin shares, removable media.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="LNK files" FontWeight="Medium"/>
+                        <TextBlock Text="LECmd: *_LECmd_Output.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseLnk}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="0,0,6,8" ToolTip="Same checks as LNK files, per application jump list.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Jump lists" FontWeight="Medium"/>
+                        <TextBlock Text="JLECmd: *_AutomaticDestinations.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseJumpLists}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="6,0,0,8" ToolTip="Files on disk (and deleted MFT entries): tools, executables in staging folders, internet downloads (Zone.Identifier), timestomping, large archives, mass ransom notes.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="$MFT" FontWeight="Medium"/>
+                        <TextBlock Text="MFTECmd: *_MFTECmd_$MFT_Output.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseMft}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="0,0,6,8" ToolTip="Tools created, renamed or deleted; prefetch files created for tools (execution evidence even after the .pf is gone); mass ransom notes.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="USN journal" FontWeight="Medium"/>
+                        <TextBlock Text="MFTECmd: *_MFTECmd_$J_Output.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseUsnJournal}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="6,0,0,8" ToolTip="Tools and large archives the user deleted.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Recycle Bin" FontWeight="Medium"/>
+                        <TextBlock Text="RBCmd: *_RBCmd_Output.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseRecycleBin}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="0,0,6,8" ToolTip="Folders users browsed (also deleted ones): tool and loot folder names, admin shares.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Shellbags" FontWeight="Medium"/>
+                        <TextBlock Text="SBECmd output" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseShellbags}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+        </UniformGrid>
+    </StackPanel>
+</UserControl>

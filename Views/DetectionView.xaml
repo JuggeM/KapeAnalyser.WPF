@@ -1,0 +1,25 @@
+<UserControl x:Class="KapeAnalyser.WPF.Views.DetectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <TextBlock Text="Detection" Style="{StaticResource SectionTitle}"/>
+
+        <TextBlock Text="Brute force threshold (failed logons from one source)" Style="{StaticResource FieldLabel}"/>
+        <TextBox Text="{Binding Config.BruteForceThreshold, UpdateSourceTrigger=PropertyChanged}" Width="120" HorizontalAlignment="Left" Margin="0,0,0,14"/>
+
+        <TextBlock Text="$MFT: only list lower-severity files created within this many days of the newest file (0 = all)" Style="{StaticResource FieldLabel}"/>
+        <TextBox Text="{Binding Config.FileSystemRecencyDays, UpdateSourceTrigger=PropertyChanged}" Width="120" HorizontalAlignment="Left" Margin="0,0,0,14"/>
+
+        <Separator/>
+
+        <TextBlock Text="Extra keywords — flagged HIGH in file names, paths and command lines (one per line)" Style="{StaticResource FieldLabel}"/>
+        <TextBox Text="{Binding ExtraKeywordsText, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" Height="110"
+                 VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" Margin="0,0,0,4"/>
+        <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,14"
+                   Text="Use for names from the ticket or threat intel, e.g. a malware file name or a staging folder. Built-in rules already cover common attacker tools (mimikatz, rclone, PsExec, AnyDesk, SharpHound, …)."/>
+
+        <TextBlock Text="Whitelisted path fragments — never flagged (one per line)" Style="{StaticResource FieldLabel}"/>
+        <TextBox Text="{Binding WhitelistText, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" Height="110"
+                 VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+    </StackPanel>
+</UserControl>

@@ -1,0 +1,18 @@
+<UserControl x:Class="KapeAnalyser.WPF.Views.IocView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <TextBlock Text="Case IOCs" Style="{StaticResource SectionTitle}"/>
+        <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,10"
+                   Text="Paste indicators (several per line is fine; defanged values are fixed). Detected: IP, domain, URL, MD5/SHA1/SHA256, Windows path, file name (.exe, .dll, …). Prefix user names with user: and other file names with file:. Text after ' #' is a comment. Every KAPE CSV of every host is searched."/>
+        <TextBox Text="{Binding IocText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="240"
+                 VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" Margin="0,0,0,6"/>
+        <TextBlock Text="{Binding IocPreview}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,10"/>
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <Button Content="Save" Style="{StaticResource StandardButton}" Command="{Binding SaveIocsCommand}" Width="90"/>
+            <Button Content="Search processed hosts" Style="{StaticResource PrimaryButton}" Command="{Binding SearchIocsCommand}" Margin="8,0,0,0"/>
+        </StackPanel>
+        <TextBlock Text="{Binding IocStatus}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+        <CheckBox Content="Search the IOC list automatically after each run" IsChecked="{Binding Config.SearchIocs}" Margin="0,14,0,0"/>
+    </StackPanel>
+</UserControl>
