@@ -7,6 +7,7 @@ A Windows desktop application for triaging Windows collections: **DFIR ORC** col
 1. **Finds hosts**: any folder under the case folder that holds EZ Tools CSVs, directly or in KAPE's category folders (`EventLogs`, `ProgramExecution`, `FileSystem`, `Registry`, …). Folders named after an ORC archive (`ORC_WorkStation_WS01_…`) or a KAPE timestamp folder work too.
 2. **Analyses** each host's module output (below) and writes a QuickWins report plus CSVs for Timeline Explorer.
 3. **Connects hosts**: lateral movement between case hosts, sources that logged on to several hosts, a case timeline, and a case IOC list searched in every CSV of every host.
+4. **Reports**: a case report for stakeholders (below) and per-host QuickWins in the same layout as the CSIRT UAC Parser.
 
 | Source | KAPE module output | What it detects |
 |---|---|---|
@@ -32,16 +33,22 @@ CaseFolder\
 │   └── ORC_Server_FS01_20261101_120000\…
 ├── iocs.txt                ← case IOC list (IOCs panel)
 └── Processed\
-    ├── CaseSummary.txt     ← hosts ranked, lateral movement, case timeline, IOCs across hosts
+    ├── CaseSummary.txt     ← hosts ranked, lateral movement, case timeline, IOCs across hosts, top findings per host
+    ├── CaseReport.html     ← case report (Case report panel → Open in browser)
+    ├── CaseReport.json     ← your edits to the case report
     ├── CaseFindings.csv    ← all hosts' findings (Timeline Explorer)
     └── WS01\
-        ├── QuickWins.txt / .rtf
+        ├── QuickWins.txt / .rtf  ← host, key findings, IOCs seen in findings, coverage, logons, one table per source
         ├── Findings.csv    ← one row per finding, with detail and artifact
         ├── Logons.csv      ← inbound network/RDP/admin-share logons by source
         └── IocHits.csv
 ```
 
 A host is processed once. To process it again, delete its folder in `Processed\`.
+
+## Case report
+
+The **Case report** panel turns every host's `Findings.csv` into a readable English summary, like the CSIRT UAC Parser's. Each key finding gets a likelihood from the PHIA yardstick (almost certain, highly likely, likely…), based on its severity, whether another KAPE module on the same host saw the same indicator or tool (for example mimikatz in Prefetch, the USN journal and a 4688 event), and matches against the case IOC list. Every CRITICAL finding, the strongest 4 HIGH findings per host and anything linking case hosts are ticked by default. Change the selection with **Select all ≥ HIGH**, **Select all** and **Reset to default**. Edit the title, bottom line, gaps and next steps, then use **Open in browser** or **Export ▾** (HTML, Word .docx or RTF). Edits are saved to `Processed\CaseReport.json` and kept when you run the analysis again.
 
 ## Running
 

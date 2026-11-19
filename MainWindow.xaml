@@ -47,6 +47,8 @@
                                  Command="{Binding NavigateCommand}" CommandParameter="Iocs"/>
                     <RadioButton Content="Output" Style="{StaticResource NavButton}"
                                  Command="{Binding NavigateCommand}" CommandParameter="Output"/>
+                    <RadioButton Content="Case report" Style="{StaticResource NavButton}"
+                                 Command="{Binding NavigateCommand}" CommandParameter="Report"/>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -70,6 +72,9 @@
                             </DataTrigger>
                             <DataTrigger Binding="{Binding ActivePanel}" Value="Output">
                                 <Setter Property="Content"><Setter.Value><views:OutputView/></Setter.Value></Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ActivePanel}" Value="Report">
+                                <Setter Property="Content"><Setter.Value><views:CaseReportView/></Setter.Value></Setter>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>

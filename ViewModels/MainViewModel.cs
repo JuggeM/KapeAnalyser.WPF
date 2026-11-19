@@ -78,9 +78,17 @@ public class MainViewModel : ViewModelBase
     public ICommand SaveIocsCommand { get; }
     public ICommand SearchIocsCommand { get; }
 
+    public CaseReportViewModel Report { get; }
+
     public MainViewModel()
     {
-        NavigateCommand = new RelayCommand(p => ActivePanel = p as string ?? ActivePanel);
+        Report = new CaseReportViewModel(Config);
+        NavigateCommand = new RelayCommand(p =>
+        {
+            if (ActivePanel == "Report") Report.SaveIfDirty();
+            ActivePanel = p as string ?? ActivePanel;
+            if (ActivePanel == "Report") Report.EnsureLoaded();
+        });
         RunCommand = new RelayCommand(_ => _ = RunAsync(), _ => CanRun);
         CancelCommand = new RelayCommand(_ => { _cts?.Cancel(); RunStatusText = "Cancelling…"; }, _ => IsRunning);
         BrowseCommand = new RelayCommand(_ => BrowseCase());

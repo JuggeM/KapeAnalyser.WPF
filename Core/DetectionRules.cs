@@ -263,6 +263,15 @@ public sealed class DetectionRules
         return null;
     }
 
+    /// <summary>Staging directory label ignoring the analyst whitelist (for indicator extraction from findings).</summary>
+    public static string? StagingDirOf(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        foreach (var (rx, label) in StagingDirs)
+            if (rx.IsMatch(path)) return label;
+        return null;
+    }
+
     private static readonly Regex PathInText = new(
         @"(?:[A-Za-z]:|%[A-Za-z]+%|\\\\[^\\\s""]+\\[^\\\s""]+)\\[^""|<>*?\r\n]*?\.(?:exe|dll|ps1|bat|cmd|vbs|js|hta|scr|jar|py|msi)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);

@@ -39,25 +39,33 @@ public static class HostReport
     private static string BuildQuickWins(HostInfo host, AnalysisContext ctx, List<Finding> findings,
         IReadOnlyList<(string Source, string Module, bool Enabled)> modules, string caseName, string analyst)
     {
+        // Same sections and line formats as CsirtParser's QuickWins.txt, so both
+        // tools read alike and QuickWinsRtf can lay the file out as tables.
         var sb = new StringBuilder();
-        sb.AppendLine("==========================================================================");
-        sb.AppendLine(" KAPE Analyser — QuickWins");
-        sb.AppendLine($" Host: {host.Hostname}   Collection: {host.Collection}");
-        if (caseName.Length > 0 || analyst.Length > 0) sb.AppendLine($" Case: {caseName}   Analyst: {analyst}");
-        sb.AppendLine($" Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
-        sb.AppendLine("==========================================================================");
+        sb.AppendLine("##########################################");
+        sb.AppendLine("# Quick Wins - KAPE Analyser");
+        sb.AppendLine($"# Generated on {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+        sb.AppendLine("##########################################");
+
+        // Timeline Coverage: the event log span when there are event logs, else every source
+        var spanSources = ctx.Coverage.Values.Where(c => c.Source == "EVTX" && c.First.HasValue).ToList();
+        if (spanSources.Count == 0) spanSources = ctx.Coverage.Values.Where(c => c.First.HasValue).ToList();
+        Header(sb, "Timeline Coverage");
+        sb.AppendLine($"First Log Entry: {(spanSources.Count > 0 ? Fmt(spanSources.Min(c => c.First)) + " UTC" : "-")}");
+        sb.AppendLine($"Last Log Entry:  {(spanSources.Count > 0 ? Fmt(spanSources.Max(c => c.Last)) + " UTC" : "-")}");
         sb.AppendLine();
 
         // HOST
         Header(sb, "HOST");
-        sb.AppendLine($"  Host: {host.Hostname}   IP(s): {(host.Ips.Count > 0 ? string.Join(", ", host.Ips) : "not found in registry")}");
-        sb.AppendLine($"  KAPE output: {host.KapeRoot}");
-        var first = ctx.Coverage.Values.Where(c => c.Source == "EVTX").Select(c => c.First).FirstOrDefault()
-                    ?? ctx.Coverage.Values.Min(c => c.First);
-        var last = ctx.Coverage.Values.Max(c => c.Last);
-        sb.AppendLine($"  Event log span: {Fmt(first)} → {Fmt(last)}   All times UTC (EZ Tools output)");
+        sb.AppendLine($"  Host:       {host.Hostname}");
+        sb.AppendLine($"  Collection: {host.Collection}");
+        sb.AppendLine($"  IP:         {(host.Ips.Count > 0 ? string.Join(", ", host.Ips) : "unknown (not found in the registry)")}");
+        sb.AppendLine("  Timezone:   all times UTC (EZ Tools output)");
         if (ctx.Config.FilterFrom.HasValue || ctx.Config.FilterTo.HasValue)
             sb.AppendLine($"  Date filter: findings from {ctx.Config.FilterFrom:yyyy-MM-dd} to {ctx.Config.FilterTo:yyyy-MM-dd}");
+        if (caseName.Length > 0) sb.AppendLine($"  Case:       {caseName}");
+        if (analyst.Length > 0) sb.AppendLine($"  Analyst:    {analyst}");
+        sb.AppendLine($"  KAPE output: {host.KapeRoot}");
         sb.AppendLine();
 
         // KEY FINDINGS
@@ -71,24 +79,46 @@ public static class HostReport
                           (key.Count > MaxKeyFindings ? $" — top {MaxKeyFindings} shown, rest in the sections below" : ""));
             sb.AppendLine();
             foreach (var f in key.Take(MaxKeyFindings))
-                sb.AppendLine($"  {f.SeverityText,-10} {f.TimeText}  [{f.Source}] {f.Text}{CountSuffix(f)}");
+                sb.AppendLine($"  {f.SeverityText,-8} {f.TimeText}  [{f.Source}] {f.Text}{CountSuffix(f)}");
         }
         sb.AppendLine();
 
-        // COVERAGE
+        // IOCs seen in findings
+        Header(sb, "IOCs (indicators seen in findings)");
+        var iocs = FindingIndicators.Extract(findings.Select(f => (f.Source, f.Text, f.Detail)), host.Ips);
+        if (iocs.Count == 0) sb.AppendLine("  No IOCs extracted from findings.");
+        else
+        {
+            sb.AppendLine("  Values pulled from findings; more sources = stronger link. Verify before blocking.");
+            sb.AppendLine();
+            foreach (var kv in iocs.OrderByDescending(k => k.Value.Count).ThenBy(k => FindingIndicators.KindOrder(k.Key.Kind))
+                                   .ThenBy(k => k.Key.Value, StringComparer.OrdinalIgnoreCase).Take(MaxIocs))
+                sb.AppendLine($"  {kv.Key.Kind,-8} {kv.Key.Value,-42} {kv.Value.Count} source(s): {string.Join(", ", kv.Value.OrderBy(s => s))}");
+            if (iocs.Count > MaxIocs) sb.AppendLine($"  … {iocs.Count - MaxIocs} more");
+        }
+        sb.AppendLine();
+
+        // COVERAGE (CsirtParser's CoverageTable layout)
         Header(sb, "COVERAGE (what was checked)");
-        sb.AppendLine($"  {"Source",-11} {"Module",-22} {"Files",5} {"Rows",12}  {"First",-19}   {"Last",-19}  Findings");
+        sb.AppendLine($"  {"Source",-14} {"Files",5}  {"Time range (UTC)",-35}  {"Crit",4} {"High",4} {"Med",4}  Status");
+        sb.AppendLine($"  {new string('-', 14)} {new string('-', 5)}  {new string('-', 35)}  {new string('-', 4)} {new string('-', 4)} {new string('-', 4)}  {new string('-', 12)}");
+        var missing = new List<string>();
         foreach (var (source, module, enabled) in modules)
         {
-            int n = findings.Count(f => f.Source == source);
-            if (!enabled) { sb.AppendLine($"  {source,-11} {module,-22} (disabled)"); continue; }
+            if (!enabled) { missing.Add($"  {source,-14} {"-",5}  {"",-35}  {"",4} {"",4} {"",4}  disabled"); continue; }
             if (!ctx.Coverage.TryGetValue(source, out var c) || c.Files.Count == 0)
             {
-                sb.AppendLine($"  {source,-11} {module,-22} not found — module not run or no output");
+                missing.Add($"  {source,-14} {"-",5}  {"",-35}  {"",4} {"",4} {"",4}  not found ({module})");
                 continue;
             }
-            sb.AppendLine($"  {source,-11} {module,-22} {c.Files.Count,5} {c.Rows,12:N0}  {Fmt(c.First),-19} → {Fmt(c.Last),-19}  {n}");
+            var mine = findings.Where(f => f.Source == source).ToList();
+            int crit = mine.Count(f => f.Severity == Severity.Critical), high = mine.Count(f => f.Severity == Severity.High),
+                med = mine.Count(f => f.Severity >= Severity.Medium);
+            var range = c.First.HasValue ? $"{c.First:yyyy-MM-dd HH:mm} → {c.Last:yyyy-MM-dd HH:mm}" : "(no timestamps)";
+            var status = crit + high > 0 ? "REVIEW" : med > 0 ? "minor" : "clean";
+            sb.AppendLine($"  {source,-14} {c.Files.Count,5}  {range,-35}  {crit,4} {high,4} {med,4}  {status}");
         }
+        foreach (var m in missing) sb.AppendLine(m);
         sb.AppendLine();
 
         // LOGONS
@@ -100,33 +130,38 @@ public static class HostReport
             {
                 var src = string.Join(" ", new[] { l.SourceHost, l.SourceIp.Length > 0 ? $"({l.SourceIp})" : "" }.Where(s => s.Length > 0));
                 var ext = DetectionRules.IsExternalIp(l.SourceIp) ? " EXTERNAL" : "";
-                sb.AppendLine($"  {l.LogonType,-17} {l.User,-28} from {src,-34} x{l.Count,-5} {Fmt(l.First)} → {Fmt(l.Last)}  [{l.Via}]{ext}");
+                sb.AppendLine($"  {l.LogonType,-20}  {l.User,-28} from {src,-34} x{l.Count,-5} {Fmt(l.First)} → {Fmt(l.Last)}  [{l.Via}]{ext}");
             }
             if (logons.Count > 40) sb.AppendLine($"  … {logons.Count - 40} more in {LogonsFile}");
             sb.AppendLine();
         }
 
-        // Per-source sections
+        // Per-source sections: "  <artifact>: [SEV] [time UTC] text", detail indented below
         foreach (var (source, _, _) in modules)
         {
             var list = findings.Where(f => f.Source == source).ToList();
             if (list.Count == 0) continue;
-            sb.AppendLine($"########## [{source}] — {list.Count} finding(s) ##########");
+            int files = Math.Max(1, list.Select(f => f.Artifact).Where(a => a.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            sb.AppendLine($"########## [{source}] — {list.Count} finding(s) across {files} file(s) ##########");
             foreach (var f in list.Take(MaxPerSection))
             {
-                sb.AppendLine($"  {f.ToLine()}");
+                var artifact = f.Artifact.Replace(": ", " ").Trim();
+                sb.AppendLine(artifact.Length > 0 ? $"  {artifact}: {f.ToLine()}" : $"  {f.ToLine()}");
                 if (f.Detail.Length > 0) sb.AppendLine($"      {OneLine(f.Detail, 400)}");
             }
             if (list.Count > MaxPerSection) sb.AppendLine($"  … {list.Count - MaxPerSection} more (lower severity) in {FindingsFile}");
             sb.AppendLine();
         }
 
-        // PATTERN COUNTS
+        // PATTERN COUNTS: one line per source, like CsirtParser
         Header(sb, "PATTERN COUNTS (all sources)");
-        foreach (var g in findings.GroupBy(f => (f.Source, f.Category)).OrderBy(g => g.Min(f => f.Severity)).ThenByDescending(g => g.Count()))
-            sb.AppendLine($"  {g.Key.Source,-11} {g.Key.Category,-50} {g.Count(),5}");
+        foreach (var g in findings.GroupBy(f => f.Source).OrderBy(g => g.Key))
+            sb.AppendLine($"  [{g.Key}] " + string.Join(", ", g.GroupBy(f => f.Category)
+                .OrderByDescending(c => c.Count()).ThenBy(c => c.Key).Select(c => $"{c.Key} x{c.Count()}")));
         return sb.ToString();
     }
+
+    public const int MaxIocs = 25;
 
     private static void Header(StringBuilder sb, string title) => sb.AppendLine($"########## {title} ##########");
 
