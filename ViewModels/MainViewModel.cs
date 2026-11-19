@@ -109,8 +109,8 @@ public class MainViewModel : ViewModelBase
         var previous = Config.CaseFolderPath;
         Config.CaseFolderPath = dlg.SelectedPath;
         if (string.IsNullOrWhiteSpace(Config.OutputPath) || !Path.IsPathRooted(Config.OutputPath)
-            || (!string.IsNullOrWhiteSpace(previous) && PathEquals(Config.OutputPath, Path.Combine(previous, "Processed"))))
-            Config.OutputPath = Path.Combine(dlg.SelectedPath, "Processed");
+            || (!string.IsNullOrWhiteSpace(previous) && PathEquals(Config.OutputPath, Path.Combine(previous, AnalyserConfig.DefaultOutputPath))))
+            Config.OutputPath = Path.Combine(dlg.SelectedPath, AnalyserConfig.DefaultOutputPath);
         OnPropertyChanged(nameof(Config));
         LoadIocs();
         _ = ScanAsync();
@@ -144,14 +144,14 @@ public class MainViewModel : ViewModelBase
         ScanStatus = "Looking for KAPE module output…";
         DetectedHosts.Clear();
         var outBase = Config.ResolveOutputPath();
-        var hosts = await Task.Run(() => KapeDiscovery.Find(Config.CaseFolderPath, outBase));
+        var hosts = await Task.Run(() => KapeDiscovery.FindInCase(Config.CaseFolderPath, outBase));
         foreach (var h in hosts)
         {
             var rel = Path.GetRelativePath(Config.CaseFolderPath, h.RootPath);
             DetectedHosts.Add($"{h.Name,-24} {h.CsvCount,4} module CSV(s)   {rel}" +
                               (AnalysisEngine.IsProcessed(outBase, h.Name) ? "   (already processed — will be skipped)" : ""));
         }
-        if (hosts.Count == 0) DetectedHosts.Add("(no KAPE module output found — expected EZ Tools CSVs, e.g. Kape\\<host>\\EventLogs\\*_EvtxECmd_Output.csv)");
+        if (hosts.Count == 0) DetectedHosts.Add("(no KAPE module output found — expected EZ Tools CSVs in Processed\\, e.g. Processed\\<host>\\EventLogs\\*_EvtxECmd_Output.csv)");
         ScanStatus = hosts.Count > 0 ? $"Found {hosts.Count} host(s)" : "No KAPE output found";
         IsScanning = false;
     }

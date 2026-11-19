@@ -8,8 +8,8 @@ namespace KapeAnalyser.WPF.Services;
 
 /// <summary>
 /// Runs every enabled analyser over each host's KAPE module output and writes
-/// Processed\&lt;host&gt;\…, then the case-wide steps (IOC search, case summary).
-/// A host is processed once: delete its Processed folder (or .processed) to redo it.
+/// the results folder (default Processed\Level2\&lt;host&gt;\…), then the case-wide steps (IOC search, case summary).
+/// A host is processed once: delete its results folder (or .processed) to redo it.
 /// </summary>
 public sealed class AnalysisEngine
 {
@@ -33,10 +33,10 @@ public sealed class AnalysisEngine
         Directory.CreateDirectory(outputBase);
         _log($"Output: {outputBase}");
 
-        var hosts = KapeDiscovery.Find(_config.CaseFolderPath, outputBase);
+        var hosts = KapeDiscovery.FindInCase(_config.CaseFolderPath, outputBase);
         if (hosts.Count == 0)
         {
-            _log("[WARN] No KAPE module output found in the case folder (looked for EZ Tools CSVs such as *_EvtxECmd_Output.csv).");
+            _log("[WARN] No KAPE module output found in Processed\\ or the case folder (looked for EZ Tools CSVs such as *_EvtxECmd_Output.csv).");
             return;
         }
 

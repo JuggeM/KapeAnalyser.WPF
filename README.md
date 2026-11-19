@@ -29,7 +29,7 @@ Get `KapeAnalyser.WPF.exe` from the [latest release](https://github.com/JuggeM/K
 | SHELLBAGS | SBECmd output | Tool and loot folder names, admin shares |
 | SRUM | `*_SrumECmd_NetworkUsages_Output.csv`, `*_AppResourceUseInfo_Output.csv` | Data sent out per app and user: known tools or staged binaries that uploaded data (exfiltration, e.g. "rclone.exe sent 2.1 GB"), other large uploads (normal uploaders such as OneDrive are ignored); tools that ran |
 
-Run KAPE with the `!EZParser` compound module (or the individual modules) against the ORC collection.
+Run KAPE with the `!EZParser` compound module (or the individual modules) against the extracted ORC collection, with the case's `Processed\` folder as module destination (`--mdest`), one subfolder per host.
 
 ## Screenshots
 
@@ -46,34 +46,40 @@ Run KAPE with the `!EZParser` compound module (or the individual modules) agains
 
 ## Case folder
 
+The case follows the collection pipeline: DFIR ORC archives are uploaded to `Uploads\`, extracted to `Decompressed\`, and KAPE (`!EZParser`) writes its module output to `Processed\`. KapeAnalyser reads `Processed\` and writes its results to `Processed\Level2\`, so they never mix with the KAPE output.
+
 ```
 CaseFolder\
-├── Kape\
-│   ├── WS01\EventLogs\…, ProgramExecution\…, FileSystem\…, Registry\…, SRUMDatabase\…
-│   └── ORC_Server_FS01_20261101_120000\…
+├── Uploads\                ← ORC archives as received
+├── Decompressed\           ← extracted ORC collections (KAPE's source)
 ├── iocs.txt                ← case IOC list (IOCs panel)
-└── Processed\
-    ├── CaseSummary.txt     ← hosts ranked, lateral movement, case timeline, IOCs across hosts, top findings per host
-    ├── CaseReport.html     ← case report (Case report panel → Open in browser)
-    ├── CaseReport.json     ← your edits to the case report
-    ├── CaseFindings.csv    ← all hosts' findings (Timeline Explorer)
-    └── WS01\
-        ├── QuickWins.txt / .rtf  ← host, key findings, IOCs seen in findings, coverage, logons, one table per source
-        ├── Findings.csv    ← one row per finding, with detail and artifact
-        ├── Logons.csv      ← inbound network/RDP/admin-share logons by source
-        └── IocHits.csv     ← case IOC hits on this host
+└── Processed\              ← KAPE module output (KAPE --mdest), one folder per host
+    ├── WS01\EventLogs\…, ProgramExecution\…, FileSystem\…, Registry\…, SRUMDatabase\…
+    ├── ORC_Server_FS01_20261101_120000\…
+    └── Level2\             ← KapeAnalyser results
+        ├── CaseSummary.txt     ← hosts ranked, lateral movement, case timeline, IOCs across hosts, top findings per host
+        ├── CaseReport.html     ← case report (Case report panel → Open in browser)
+        ├── CaseReport.json     ← your edits to the case report
+        ├── CaseFindings.csv    ← all hosts' findings (Timeline Explorer)
+        └── WS01\
+            ├── QuickWins.txt / .rtf  ← host, key findings, IOCs seen in findings, coverage, logons, one table per source
+            ├── Findings.csv    ← one row per finding, with detail and artifact
+            ├── Logons.csv      ← inbound network/RDP/admin-share logons by source
+            └── IocHits.csv     ← case IOC hits on this host
 ```
 
-A host is processed once. To process it again, delete its folder in `Processed\`.
+A host is processed once. To process it again, delete its folder in `Processed\Level2\`. The output folder can be changed in the **Output** panel (or with `--out`); it is never the case folder or `Processed\` itself.
+
+Older cases without KAPE output in `Processed\` (for example `Case\Kape\WS01\…`) still work: the whole case folder is searched instead, skipping `Uploads\` and `Decompressed\`.
 
 ## Quickstart
 
-1. **Case setup**: set the case name and analyst, and browse to the case folder. The hosts found are listed. Output goes to `Processed\` by default.
+1. **Case setup**: set the case name and analyst, and browse to the case folder. The hosts found in `Processed\` are listed; results go to `Processed\Level2\`.
 2. **Modules**: choose which EZ Tools outputs to analyse (all are on by default).
 3. **Detection**: adjust the brute force threshold, extra keywords and whitelisted paths if needed.
 4. **IOCs** (optional): paste known indicators from the ticket or threat intel.
 5. **Run analysis**. The Output panel shows progress.
-6. Start triage in each host's `QuickWins.rtf`, then `Processed\CaseSummary.txt`.
+6. Start triage in each host's `QuickWins.rtf`, then `Processed\Level2\CaseSummary.txt`.
 7. **Case report**: review the likelihoods, edit the bottom line, and export.
 
 Headless (same output, no window):
@@ -107,7 +113,7 @@ Every CSV of every host is searched, including columns no analyser reads. Hits g
 
 ## Case summary and lateral movement
 
-`Processed\CaseSummary.txt` is built from the processed output of every host, so it also covers hosts processed in earlier runs:
+`Processed\Level2\CaseSummary.txt` is built from the processed output of every host, so it also covers hosts processed in earlier runs:
 
 - **Hosts** ranked by critical, high and medium findings, with IOC hits and the top finding
 - **Lateral movement**: logons whose source workstation or IP is another case host, and a case host's IP in another host's findings (for example `rclone copy \\10.10.1.30\Finance`). The direction is kept: a logon *from* WS01 to FS01 is `WS01 → FS01`
@@ -125,9 +131,9 @@ The **Case report** panel turns every host's `Findings.csv` into a readable Engl
 - Every CRITICAL finding, the strongest 4 HIGH findings per host and anything linking case hosts are ticked by default. Change the selection with **Select all ≥ HIGH**, **Select all** and **Reset to default**
 - A title, severity and a bottom line are drafted from the findings. The bottom line says what SRUM shows about data sent out, or which hosts had no SRUM output
 - Intelligence gaps are detected from the data (missing module output, unknown host IPs, findings without a timestamp, no IOC list searched); add your own gaps and next steps
-- **Open in browser** writes `Processed\CaseReport.html`; **Export ▾** saves HTML, Word (.docx, with real heading styles) or RTF. Print the HTML to get a PDF
+- **Open in browser** writes `Processed\Level2\CaseReport.html`; **Export ▾** saves HTML, Word (.docx, with real heading styles) or RTF. Print the HTML to get a PDF
 
-Edits are saved to `Processed\CaseReport.json` and kept when you run the analysis again.
+Edits are saved to `Processed\Level2\CaseReport.json` and kept when you run the analysis again.
 
 ## Detection settings
 

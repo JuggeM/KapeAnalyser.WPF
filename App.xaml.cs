@@ -36,7 +36,7 @@ public partial class App : Application
         var config = new AnalyserConfig
         {
             CaseFolderPath = Path.GetFullPath(e.Args[i + 1]),
-            OutputPath = Arg("--out", "Processed"),
+            OutputPath = Arg("--out", AnalyserConfig.DefaultOutputPath),
             CaseName = Arg("--name", ""),
             AnalystName = Arg("--analyst", Environment.UserName),
         };

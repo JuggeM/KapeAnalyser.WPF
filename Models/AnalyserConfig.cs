@@ -12,25 +12,36 @@ public class AnalyserConfig
     public string CaseName { get; set; } = string.Empty;
     public string AnalystName { get; set; } = string.Empty;
     public string CaseFolderPath { get; set; } = string.Empty;
-    public string OutputPath { get; set; } = "Processed";
+    /// <summary>
+    /// Case layout: Uploads\ (ORC archives) → Decompressed\ (extracted) → KAPE
+    /// writes its module output to Processed\ → this tool reads Processed\ and
+    /// writes its results to Processed\Level2\.
+    /// </summary>
+    public const string KapeOutputFolder = "Processed";
+    public const string ResultsFolder = "Level2";
+    public static readonly string DefaultOutputPath = Path.Combine(KapeOutputFolder, ResultsFolder);
+
+    public string OutputPath { get; set; } = DefaultOutputPath;
 
     /// <summary>
     /// Folder results are written to. A relative OutputPath is resolved
-    /// against the case folder; the case root itself is never used (it holds
-    /// the evidence), both fall back to &lt;case&gt;\Processed.
+    /// against the case folder. The case root (evidence) and the KAPE output
+    /// root (Processed\) are never used, so results never mix with their
+    /// input; both fall back to &lt;case&gt;\Processed\Level2.
     /// </summary>
     public string ResolveOutputPath()
     {
         string caseDir = string.IsNullOrWhiteSpace(CaseFolderPath) ? string.Empty : Path.GetFullPath(CaseFolderPath);
-        string defaultOut = Path.Combine(caseDir, "Processed");
+        string defaultOut = Path.Combine(caseDir, DefaultOutputPath);
         if (string.IsNullOrWhiteSpace(OutputPath)) return defaultOut;
 
         string resolved = Path.IsPathRooted(OutputPath)
             ? Path.GetFullPath(OutputPath)
             : Path.GetFullPath(Path.Combine(caseDir, OutputPath));
 
-        if (caseDir.Length > 0 && string.Equals(resolved.TrimEnd('\\', '/'), caseDir.TrimEnd('\\', '/'),
-                StringComparison.OrdinalIgnoreCase))
+        static bool Same(string a, string b) =>
+            string.Equals(a.TrimEnd('\\', '/'), b.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+        if (caseDir.Length > 0 && (Same(resolved, caseDir) || Same(resolved, Path.Combine(caseDir, KapeOutputFolder))))
             return defaultOut;
         return resolved;
     }

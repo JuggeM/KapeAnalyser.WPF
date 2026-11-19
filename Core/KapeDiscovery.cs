@@ -9,13 +9,33 @@ public sealed record KapeHost(string Name, string RootPath, int CsvCount);
 /// <summary>
 /// Finds KAPE module output in a case folder. A "host" is a folder whose
 /// files include EZ Tools CSVs, either directly or inside KAPE's category
-/// folders (EventLogs, ProgramExecution, FileSystem, …). Typical layouts:
-///   Case\Kape\WS01\EventLogs\…_EvtxECmd_Output.csv     (one folder per host)
-///   Case\Kape\EventLogs\…                              (single host, no host folder)
-///   Case\ORC_WorkStation_WS01_…\2026-11-01T…\EventLogs  (nested, any depth up to 4)
+/// folders (EventLogs, ProgramExecution, FileSystem, …).
+///
+/// The case layout is Uploads\ (ORC archives) → Decompressed\ → KAPE output
+/// in Processed\, so Processed\ is searched first:
+///   Case\Processed\WS01\EventLogs\…_EvtxECmd_Output.csv              (one folder per host)
+///   Case\Processed\ORC_WorkStation_WS01_…\2026-11-01T…\EventLogs     (nested, any depth up to 4)
+/// When Processed\ holds no EZ Tools output, the whole case folder is searched
+/// (older layouts such as Case\Kape\WS01\…), skipping Uploads\ and Decompressed\.
+/// The results folder (Processed\Level2\) is always skipped.
 /// </summary>
 public static class KapeDiscovery
 {
+    /// <summary>Raw collection folders that never hold KAPE output (and can be huge).</summary>
+    private static readonly string[] RawFolders = { "Uploads", "Decompressed" };
+
+    /// <summary>KAPE output hosts for a case: Processed\ first, else the whole case folder.</summary>
+    public static List<KapeHost> FindInCase(string caseFolder, string outputBase)
+    {
+        var kapeOut = Path.Combine(caseFolder, Models.AnalyserConfig.KapeOutputFolder);
+        if (Directory.Exists(kapeOut))
+        {
+            var hosts = Find(kapeOut, outputBase, rootCanBeHost: true);
+            if (hosts.Count > 0) return hosts;
+        }
+        return Find(caseFolder, outputBase, RawFolders.Select(f => Path.Combine(caseFolder, f)).Append(kapeOut));
+    }
+
     public static readonly HashSet<string> CategoryFolders = new(StringComparer.OrdinalIgnoreCase)
     {
         "EventLogs", "ProgramExecution", "FileSystem", "Registry", "FileFolderAccess", "FileDeletion",
@@ -28,11 +48,13 @@ public static class KapeDiscovery
 
     public static bool IsKnownCsv(string fileName) => Probe.Any(a => a.Accepts(fileName));
 
-    public static List<KapeHost> Find(string caseFolder, string outputBase)
+    /// <param name="rootCanBeHost">True when the folder itself may be one host's KAPE output (KAPE run with --mdest Processed for a single host).</param>
+    public static List<KapeHost> Find(string caseFolder, string outputBase, IEnumerable<string>? alsoSkip = null, bool rootCanBeHost = false)
     {
         var hosts = new List<KapeHost>();
         if (!Directory.Exists(caseFolder)) return hosts;
         var skip = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Path.GetFullPath(outputBase).TrimEnd('\\') };
+        foreach (var s in alsoSkip ?? Enumerable.Empty<string>()) skip.Add(Path.GetFullPath(s).TrimEnd('\\'));
 
         void Visit(string dir, int depth)
         {
@@ -46,7 +68,7 @@ public static class KapeDiscovery
             bool hasCategory = subdirs.Any(s => CategoryFolders.Contains(Path.GetFileName(s)));
             bool hasCsvHere = SafeFiles(dir, SearchOption.TopDirectoryOnly).Any(f => IsKnownCsv(Path.GetFileName(f)));
 
-            if ((hasCategory || hasCsvHere) && depth > 0)
+            if ((hasCategory || hasCsvHere) && (depth > 0 || rootCanBeHost))
             {
                 int n = SafeFiles(dir, SearchOption.AllDirectories).Count(f => IsKnownCsv(Path.GetFileName(f)));
                 if (n > 0) { hosts.Add(new KapeHost(name, dir, n)); return; }

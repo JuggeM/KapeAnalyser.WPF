@@ -10,10 +10,14 @@
   rclone (SRUM). FS01 also has a webshell (w3wp.exe starting cmd.exe). All IPs are from
   documentation ranges; all names are fictional.
 
-  Layout produced (three different host-folder styles on purpose):
-    <Case>\Kape\WS01\EventLogs\...                        one folder per host
-    <Case>\Kape\ORC_Server_FS01_20261101_120000\...       DFIR ORC archive name
-    <Case>\Kape\DC01\2026-11-02T101010\EventLogs\...       KAPE timestamp folder
+  Layout produced, as in a real case (ORC archives in Uploads\, extracted to
+  Decompressed\, KAPE output in Processed\; KapeAnalyser writes to
+  Processed\Level2\). Three different host-folder styles on purpose:
+    <Case>\Uploads\                                            (empty here)
+    <Case>\Decompressed\                                       (empty here)
+    <Case>\Processed\WS01\EventLogs\...                        one folder per host
+    <Case>\Processed\ORC_Server_FS01_20261101_120000\...       DFIR ORC archive name
+    <Case>\Processed\DC01\2026-11-02T101010\EventLogs\...       KAPE timestamp folder
     <Case>\iocs.txt
 
 .EXAMPLE
@@ -22,7 +26,8 @@
 param([Parameter(Mandatory)] [string] $CaseFolder)
 
 $ErrorActionPreference = 'Stop'
-$kape = Join-Path $CaseFolder 'Kape'
+foreach ($d in 'Uploads', 'Decompressed') { New-Item -ItemType Directory -Force -Path (Join-Path $CaseFolder $d) | Out-Null }
+$kape = Join-Path $CaseFolder 'Processed'   # KAPE's module output (its --mdest)
 $ts = '20261101120000'
 
 function New-Dir($p) { New-Item -ItemType Directory -Force -Path $p | Out-Null; $p }

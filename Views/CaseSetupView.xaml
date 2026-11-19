@@ -22,7 +22,7 @@
             <Button Grid.Column="2" Content="Rescan" Style="{StaticResource StandardButton}" Margin="8,0,0,0" Command="{Binding RescanCommand}"/>
         </Grid>
         <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,14"
-                   Text="Put each host's KAPE module output in its own folder, e.g. Case\Kape\WS01\ (EventLogs, ProgramExecution, FileSystem, Registry, …). Any depth works; folders named after DFIR ORC archives (ORC_WorkStation_WS01_…) are fine."/>
+                   Text="Case layout: ORC archives in Uploads\, extracted to Decompressed\, KAPE module output in Processed\ (one folder per host, e.g. Processed\WS01\EventLogs\…; folders named after DFIR ORC archives are fine). Results go to Processed\Level2\. Older cases without KAPE output in Processed\ are searched as a whole."/>
 
         <TextBlock Text="Hosts detected" Style="{StaticResource FieldLabel}"/>
         <StackPanel Margin="0,0,0,6" Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}}">

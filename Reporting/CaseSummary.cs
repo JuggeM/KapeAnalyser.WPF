@@ -9,7 +9,7 @@ namespace KapeAnalyser.WPF.Reporting;
 /// processed in earlier runs): hosts ranked by severity, lateral movement
 /// between case hosts, sources that logged on to several hosts, IOC hits,
 /// IOCs across hosts, a case timeline and the top findings per host.
-/// Writes Processed\CaseSummary.txt and Processed\CaseFindings.csv. The
+/// Writes CaseSummary.txt and CaseFindings.csv in the results folder (Processed\Level2\). The
 /// loaders are shared with the case report.
 /// </summary>
 public static class CaseSummary

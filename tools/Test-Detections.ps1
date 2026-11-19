@@ -31,7 +31,7 @@ Set-Content -Path $marker -Value 'created by Test-Detections.ps1'
 $p = Start-Process -FilePath $Exe -ArgumentList "--case `"$WorkFolder`" --name Regression" -Wait -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $WorkFolder 'run.log')
 if ($p.ExitCode -ne 0) { throw "KapeAnalyser exited with $($p.ExitCode); see $WorkFolder\run.log" }
 
-$processed = Join-Path $WorkFolder 'Processed'
+$processed = Join-Path $WorkFolder 'Processed\Level2'   # results; KAPE output is in Processed\
 $findings = Get-ChildItem $processed -Recurse -Filter Findings.csv | ForEach-Object { Import-Csv $_.FullName -Encoding UTF8 }
 $summary = Get-Content (Join-Path $processed 'CaseSummary.txt') -Raw -Encoding UTF8
 $arrow = [string][char]0x2192
@@ -86,6 +86,12 @@ Check ($summary -notmatch "FS01\s+$arrow WS01") 'no reversed link FS01 -> WS01'
 $hits = @(Import-Csv (Join-Path $processed 'WS01\IocHits.csv') -Encoding UTF8)
 Check ($hits.Count -eq 5) "WS01 case IOC hits = 5 (got $($hits.Count))"
 Check (Test-Path (Join-Path $processed 'WS01\QuickWins.rtf')) 'WS01 QuickWins.rtf written'
+
+Write-Host 'Layout'
+$kapeOut = Join-Path $WorkFolder 'Processed'
+Check (@(Get-ChildItem $processed -Directory).Count -eq 3) 'three host folders in Processed\Level2'
+Check (-not (Test-Path (Join-Path $kapeOut 'CaseSummary.txt'))) 'nothing written into the KAPE output root (Processed\)'
+Check (-not (Get-ChildItem $kapeOut -Recurse -Filter 'QuickWins.txt' | Where-Object { $_.FullName -notlike "$processed*" })) 'no results outside Processed\Level2'
 
 if ($failed -gt 0) { Write-Host "$failed check(s) failed. Output kept in $WorkFolder" -ForegroundColor Red; exit 1 }
 Write-Host 'All checks passed.' -ForegroundColor Green

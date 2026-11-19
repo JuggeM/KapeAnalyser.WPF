@@ -16,7 +16,7 @@
             <Button Grid.Column="2" Content="Open" Style="{StaticResource StandardButton}" Margin="8,0,0,0" Command="{Binding OpenOutputCommand}"/>
         </Grid>
         <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,14"
-                   Text="Per host: QuickWins.txt/.rtf, Findings.csv (open in Timeline Explorer), Logons.csv, IocHits.csv. Case: CaseSummary.txt and CaseFindings.csv. A host is processed once — delete its folder to redo it."/>
+                   Text="Default Processed\Level2 (next to KAPE's output in Processed\). Per host: QuickWins.txt/.rtf, Findings.csv (open in Timeline Explorer), Logons.csv, IocHits.csv. Case: CaseSummary.txt, CaseFindings.csv and the case report. A host is processed once — delete its folder to redo it."/>
 
         <Separator/>
 

@@ -12,7 +12,7 @@ namespace KapeAnalyser.WPF.ViewModels;
 /// <summary>
 /// The "Case report" panel: an editable, exportable case summary built from
 /// the processed output. Analyst edits (title, bottom line, per-finding
-/// likelihood, gaps, next steps) are kept in Processed\CaseReport.json so they
+/// likelihood, gaps, next steps) are kept in CaseReport.json in the results folder so they
 /// survive re-runs; exports are a self-contained HTML page, RTF or Word (.docx).
 /// </summary>
 public class CaseReportViewModel : ViewModelBase
