@@ -62,10 +62,15 @@ function Ev($time, $id, $channel, $provider, $computer, $data, $userData = $null
     }
 }
 $SecProv = 'Microsoft-Windows-Security-Auditing'
-function Logon($t, $comp, $user, $type, $ip, $ws) {
-    Ev $t 4624 'Security' $SecProv $comp ([ordered]@{ SubjectUserSid = 'S-1-5-18'; TargetUserName = $user; TargetDomainName = 'CORP'
+function Logon($t, $comp, $user, $type, $ip, $ws, $id = '0x0') {
+    Ev $t 4624 'Security' $SecProv $comp ([ordered]@{ SubjectUserSid = 'S-1-5-18'; TargetUserName = $user; TargetDomainName = 'CORP'; TargetLogonId = $id
         LogonType = $type; LogonProcessName = 'NtLmSsp'; AuthenticationPackageName = 'NTLM'; WorkstationName = $ws; IpAddress = $ip; IpPort = '0' })
 }
+function Logoff($t, $comp, $user, $type, $id) {
+    Ev $t 4634 'Security' $SecProv $comp ([ordered]@{ TargetUserName = $user; TargetDomainName = 'CORP'; TargetLogonId = $id; LogonType = $type })
+}
+$LsmChan = 'Microsoft-Windows-TerminalServices-LocalSessionManager/Operational'; $LsmProv = 'Microsoft-Windows-TerminalServices-LocalSessionManager'
+$SysmonChan = 'Microsoft-Windows-Sysmon/Operational'; $SysmonProv = 'Microsoft-Windows-Sysmon'
 
 $d0 = [datetime]'2026-11-01 09:00:00'
 
@@ -82,7 +87,20 @@ $users = 'administrator', 'admin', 'jdoe', 'test', 'scanner'
     $ev += Ev $d0.AddSeconds($_ * 7) 4625 'Security' $SecProv $ws ([ordered]@{ TargetUserName = $users[$_ % 5]; TargetDomainName = 'CORP'; Status = '0xc000006d'; FailureReason = '%%2313'; LogonType = '3'; WorkstationName = 'kali'; IpAddress = '203.0.113.45'; IpPort = '0' })
 }
 $tIn = $d0.AddMinutes(5)
-$ev += Logon $tIn $ws 'jdoe' '10' '203.0.113.45' 'kali'
+$ev += Logon $tIn $ws 'jdoe' '10' '203.0.113.45' 'kali' '0x3E7A1'
+# The RDP session: logoff 42 minutes later (Security), disconnect then logoff (LocalSessionManager)
+$ev += Logoff $tIn.AddMinutes(42) $ws 'jdoe' '10' '0x3E7A1'
+$ev += Ev $tIn.AddMinutes(30) 24 $LsmChan $LsmProv $ws $null @{ EventXML = [ordered]@{ User = 'CORP\jdoe'; SessionID = '2'; Address = '203.0.113.45' } }
+$ev += Ev $tIn.AddMinutes(30).AddSeconds(40) 25 $LsmChan $LsmProv $ws $null @{ EventXML = [ordered]@{ User = 'CORP\jdoe'; SessionID = '2'; Address = '203.0.113.45' } }
+$ev += Ev $tIn.AddMinutes(42) 23 $LsmChan $LsmProv $ws $null @{ EventXML = [ordered]@{ User = 'CORP\jdoe'; SessionID = '2' } }
+# A local console session for contrast (not external)
+$ev += Logon $d0.AddHours(-12).AddMinutes(1) $ws 'jdoe' '2' '127.0.0.1' 'WS01' '0x1A2B'
+$ev += Logoff $d0.AddHours(-4) $ws 'jdoe' '2' '0x1A2B'
+# WMI persistence (Sysmon 19/20/21) and remote process creation with wmic
+$ev += Ev $tIn.AddMinutes(10) 19 $SysmonChan $SysmonProv $ws ([ordered]@{ EventType = 'WmiFilterEvent'; Operation = 'Created'; User = 'CORP\jdoe'; EventNamespace = 'root\subscription'; Name = 'SysUpdate'; Query = "SELECT * FROM __InstanceModificationEvent WITHIN 300 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System'" })
+$ev += Ev $tIn.AddMinutes(10).AddSeconds(1) 20 $SysmonChan $SysmonProv $ws ([ordered]@{ EventType = 'WmiConsumerEvent'; Operation = 'Created'; User = 'CORP\jdoe'; Name = 'SysUpdate'; Type = 'Command Line'; Destination = 'C:\Users\Public\svchost.exe' })
+$ev += Ev $tIn.AddMinutes(10).AddSeconds(2) 21 $SysmonChan $SysmonProv $ws ([ordered]@{ EventType = 'WmiBindingEvent'; Operation = 'Created'; User = 'CORP\jdoe'; Consumer = 'CommandLineEventConsumer.Name="SysUpdate"'; Filter = '__EventFilter.Name="SysUpdate"' })
+$ev += Ev $tIn.AddMinutes(24) 4688 'Security' $SecProv $ws ([ordered]@{ SubjectUserName = 'jdoe'; NewProcessName = 'C:\Windows\System32\wbem\WMIC.exe'; CommandLine = 'wmic /node:10.10.1.30 process call create "cmd.exe /c whoami"'; ParentProcessName = 'C:\Windows\System32\cmd.exe' })
 $ev += Ev $tIn.AddSeconds(-3) 1149 'Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational' 'Microsoft-Windows-TerminalServices-RemoteConnectionManager' $ws $null @{ EventXML = [ordered]@{ Param1 = 'jdoe'; Param2 = 'CORP'; Param3 = '203.0.113.45' } }
 $ev += Ev $tIn.AddSeconds(2) 21 'Microsoft-Windows-TerminalServices-LocalSessionManager/Operational' 'Microsoft-Windows-TerminalServices-LocalSessionManager' $ws $null @{ EventXML = [ordered]@{ User = 'CORP\jdoe'; SessionID = '2'; Address = '203.0.113.45' } }
 # Execution
@@ -212,6 +230,17 @@ Write-Csv @(
         BackgroundCycleTime = 0; FaceTime = 0; ForegroundBytesRead = 2254857830; ForegroundBytesWritten = 0; ForegroundCycleTime = 912345678 }
 ) (Join-Path $kape "WS01\SRUMDatabase\${ts}_SrumECmd_AppResourceUseInfo_Output.csv")
 
+# Hayabusa dfir-timeline CSV (standard profile, local time +01:00, abbreviated levels)
+function Hb($local, $level, $eid, $chan, $title, $details) {
+    [pscustomobject][ordered]@{ Timestamp = $local.ToString('yyyy-MM-dd HH:mm:ss.fff') + ' +01:00'; Computer = 'WS01.corp.local'; Channel = $chan
+        EventID = $eid; Level = $level; RecordID = 100; RuleTitle = $title; Details = $details; ExtraFieldInfo = ''; RuleID = '00000000-0000-0000-0000-000000000000' }
+}
+Write-Csv @(
+    Hb $d0.AddHours(1).AddMinutes(4) 'high' 4625 'Sec' 'Multiple Logon Failures From One Source' 'Src: 203.0.113.45 | Count: 30'
+    Hb $tIn.AddHours(1).AddMinutes(6) 'high' 5007 'Defender' 'Windows Defender Exclusion Added' 'Path: C:\Users\Public'
+    Hb $tIn.AddHours(1).AddMinutes(1) 'info' 4624 'Sec' 'Logon (Network)' 'User: jdoe'
+) (Join-Path $kape "WS01\EventLogs\hayabusa-timeline.csv")
+
 # ── FS01 (ORC-style folder name) ─────────────────────────────────────
 $fsRoot = Join-Path $kape 'ORC_Server_FS01_20261101_120000'
 $fs = 'FS01.corp.local'
@@ -223,6 +252,13 @@ $ev += Ev $tL.AddSeconds(2) 5145 'Security' $SecProv $fs ([ordered]@{ SubjectUse
 $ev += Ev $tL.AddSeconds(4) 7045 'System' 'Service Control Manager' $fs ([ordered]@{ ServiceName = 'PSEXESVC'; ImagePath = '%SystemRoot%\PSEXESVC.exe'; ServiceType = 'user mode service'; StartType = 'demand start'; AccountName = 'LocalSystem' })
 $ev += Ev $tL.AddMinutes(1) 4688 'Security' $SecProv $fs ([ordered]@{ SubjectUserName = 'jdoe'; NewProcessName = 'C:\Windows\System32\vssadmin.exe'; CommandLine = 'vssadmin.exe delete shadows /all /quiet'; ParentProcessName = 'C:\Windows\PSEXESVC.exe' })
 $ev += Ev $tL.AddMinutes(2) 4688 'Security' $SecProv $fs ([ordered]@{ SubjectUserName = 'jdoe'; NewProcessName = 'C:\Windows\System32\bcdedit.exe'; CommandLine = 'bcdedit /set {default} recoveryenabled No'; ParentProcessName = 'C:\Windows\PSEXESVC.exe' })
+# Chainsaw hunt --csv output (no level column)
+Write-Csv @(
+    [pscustomobject][ordered]@{ timestamp = $tL.AddMinutes(1).ToString('yyyy-MM-ddTHH:mm:ss.ffffffZ'); detections = '+ Shadow Copy Deletion Using OS Utilities'
+        path = 'C:\Windows\System32\winevt\Logs\Security.evtx'; count = 1; 'Event.System.Provider' = $SecProv; 'Event ID' = 4688; 'Record ID' = 200
+        Computer = 'FS01.corp.local'; 'Event Data' = 'NewProcessName: C:\Windows\System32\vssadmin.exe' }
+) (Join-Path $fsRoot "EventLogs\chainsaw-sigma.csv")
+
 # Webshell on FS01's intranet site: IIS worker runs recon commands
 $ev += Ev $d0.AddMinutes(-30) 4688 'Security' $SecProv $fs ([ordered]@{ SubjectUserName = 'FS01$'; NewProcessName = 'C:\Windows\System32\cmd.exe'; CommandLine = 'cmd.exe /c whoami'; ParentProcessName = 'C:\Windows\System32\inetsrv\w3wp.exe' })
 Write-Csv $ev (Join-Path $fsRoot "EventLogs\${ts}_EvtxECmd_Output.csv")

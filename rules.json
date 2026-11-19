@@ -629,6 +629,18 @@
       "category": "Anti-forensics tool",
       "severity": "Critical",
       "group": "Defence evasion / impact"
+    },
+    {
+      "name": "scrcons",
+      "category": "WMI script consumer host (WMI persistence ran a script)",
+      "severity": "High",
+      "group": "WMI"
+    },
+    {
+      "name": "mofcomp",
+      "category": "MOF compiler (can register WMI persistence)",
+      "severity": "Medium",
+      "group": "WMI"
     }
   ],
   "stagingFolders": [
@@ -915,6 +927,31 @@
       "pattern": "New-Object\\s+(System\\.)?Net\\.Sockets\\.TCPClient",
       "label": "PowerShell TCP client (reverse shell)",
       "severity": "Critical"
+    },
+    {
+      "pattern": "\\bwmic(\\.exe)?\\s+.*/node:\\s*\\S+.*\\bprocess\\s+call\\s+create",
+      "label": "Remote process via WMIC (/node)",
+      "severity": "High"
+    },
+    {
+      "pattern": "\\bwmic(\\.exe)?\\s+(/\\S+\\s+)*process\\s+call\\s+create",
+      "label": "Process created via WMIC",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "(Invoke-WmiMethod|Invoke-CimMethod|\\[wmiclass\\]).*Win32_Process.*\\bCreate\\b",
+      "label": "Process created via WMI (PowerShell)",
+      "severity": "High"
+    },
+    {
+      "pattern": "(Set-WmiInstance|New-CimInstance|Register-WmiEvent).*(__EventFilter|__EventConsumer|CommandLineEventConsumer|ActiveScriptEventConsumer|__FilterToConsumerBinding)",
+      "label": "WMI persistence created (PowerShell)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "\\bmofcomp(\\.exe)?\\s+\\S+",
+      "label": "MOF file compiled (mofcomp)",
+      "severity": "Medium"
     }
   ],
   "shellbagFolderNames": "\\b(mimikatz|rclone|exfil|loot|dump|dumps|hashes|creds|passwords?|sharphound|bloodhound|lazagne|procdump|psexec|cobalt|beacon|tools?|hack|payloads?|ransom|staging)\\b|\\\\\\\\[^\\\\]+\\\\(ADMIN|[A-Z])\\$"

@@ -19,7 +19,7 @@ Get `KapeAnalyser.WPF.exe` and `rules.json` from the [latest release](https://gi
 
 | Source | KAPE module output | What it detects |
 |---|---|---|
-| EVTX | `*_EvtxECmd_Output.csv` | **Logons:** brute force (4625/4771/4776) and *succeeded* after failures, RDP logons (4624 type 10, 1149, 21/25), network logons from external IPs, type 9 logons, admin shares (5140/5145). **Accounts:** created and added to privileged groups. **Execution and persistence:** services (7045/4697), scheduled tasks (4698), process command lines (4688, Sysmon 1), shells started by a web server, Office, WMI or the print spooler (parent process), PowerShell (4104, 400/600/800), autorun registry writes (Sysmon 13), WMI subscriptions, BITS jobs. **Defence evasion:** Defender detections, exclusions and tampering, log clearing (1102/104), LSASS access (Sysmon 10). **Domain controller:** Kerberoasting (RC4) and DES tickets (4769), DCSync (4662), AdminSDHolder / delegation / shadow credential / GPO changes (5136), computer accounts created or given delegation by a user (4741/4742) |
+| EVTX | `*_EvtxECmd_Output.csv` | **Logons:** brute force (4625/4771/4776) and *succeeded* after failures, RDP logons (4624 type 10, 1149, 21/25), network logons from external IPs, type 9 logons, admin shares (5140/5145). **Sessions:** logon to logoff (4624 → 4634/4647 by logon ID) and RDP sessions (LocalSessionManager 21 → 24/25 → 23), with duration; RDP sessions from external IPs are reported with how long they lasted. **WMI:** event filters, consumers and bindings (Sysmon 19/20/21), permanent and temporary subscriptions (WMI-Activity 5861/5860), providers loaded from unusual paths (5857). **Accounts:** created and added to privileged groups. **Execution and persistence:** services (7045/4697), scheduled tasks (4698), process command lines (4688, Sysmon 1), shells started by a web server, Office, WMI or the print spooler (parent process), PowerShell (4104, 400/600/800), autorun registry writes (Sysmon 13), WMI subscriptions, BITS jobs. **Defence evasion:** Defender detections, exclusions and tampering, log clearing (1102/104), LSASS access (Sysmon 10). **Domain controller:** Kerberoasting (RC4) and DES tickets (4769), DCSync (4662), AdminSDHolder / delegation / shadow credential / GPO changes (5136), computer accounts created or given delegation by a user (4741/4742) |
 | PREFETCH | `*_PECmd_Output.csv` | Known attacker and dual-use tools, executables run from staging folders |
 | AMCACHE | `*_Amcache_*FileEntries.csv` | Same, with SHA1 |
 | SHIMCACHE | `*AppCompatCache*.csv` | Same (times are file modification times) |
@@ -30,8 +30,11 @@ Get `KapeAnalyser.WPF.exe` and `rules.json` from the [latest release](https://gi
 | RECYCLEBIN | `*_RBCmd_Output.csv` | Deleted tools and large archives |
 | SHELLBAGS | SBECmd output | Tool and loot folder names, admin shares |
 | SRUM | `*_SrumECmd_NetworkUsages_Output.csv`, `*_AppResourceUseInfo_Output.csv` | Data sent out per app and user: known tools or staged binaries that uploaded data (exfiltration, e.g. "rclone.exe sent 2.1 GB"), other large uploads (normal uploaders such as OneDrive are ignored); tools that ran |
+| SIGMA | Hayabusa `dfir-timeline` CSV or Chainsaw `hunt --csv`, with `hayabusa` or `chainsaw` in the file name (or `sigma.csv`) | One finding per Sigma rule (and computer) with count and first/last time. Severity from the rule level (critical, high, medium; low = suspicious); informational hits are skipped. Columns are found by name, so any Hayabusa output profile works; timestamps with a UTC offset are converted to UTC. Chainsaw output has no level, so its hits are medium |
 
-Run KAPE with the `!EZParser` compound module (or the individual modules) against the extracted ORC collection, with the case's `Processed\` folder as module destination (`--mdest`), one subfolder per host.
+WMI tools and techniques are also in `rules.json`: `scrcons.exe` (runs WMI script consumers) and `mofcomp.exe` as tools, and remote process creation with `wmic /node:… process call create`, `Invoke-WmiMethod`/`Invoke-CimMethod … Win32_Process`, WMI persistence created from PowerShell, and compiled MOF files as command lines.
+
+Run KAPE with the `!EZParser` compound module (or the individual modules) against the extracted ORC collection, with the case's `Processed\` folder as module destination (`--mdest`), one subfolder per host. Sigma results are optional: run Hayabusa (`hayabusa dfir-timeline -d <host's EVTX folder> -o Processed\<host>\hayabusa-timeline.csv`) or Chainsaw (`chainsaw hunt … --csv --output Processed\<host>\chainsaw`) and put the CSV in that host's folder.
 
 ## Screenshots
 
@@ -67,6 +70,7 @@ CaseFolder\
             ├── QuickWins.txt / .rtf  ← host, key findings, IOCs seen in findings, coverage, logons, one table per source
             ├── Findings.csv    ← one row per finding, with detail and artifact
             ├── Logons.csv      ← inbound network/RDP/admin-share logons by source
+            ├── Sessions.csv    ← every logon session: user, type, source, start, end, duration, what ended it
             └── IocHits.csv     ← case IOC hits on this host
 ```
 
@@ -102,6 +106,7 @@ One report per host, in `QuickWins.txt` and laid out as tables in `QuickWins.rtf
 - **IOCs seen in findings**: IPs, URLs, executables in staging folders, accounts and SHA1 hashes, with the sources each one appears in (more sources = stronger link)
 - **Coverage**: per module, files, time range, Crit/High/Med and a status (review, minor, clean, not found). A source that wasn't collected shows as *not found*, so a missing finding is never mistaken for a clean source
 - **Inbound logons**: network, RDP and admin-share logons by source
+- **Logon sessions**: interactive and RDP sessions with start, end and duration, external sources first. A session without an end was still open at collection, or the log rolled
 - **One section per source**, with the artifact (e.g. `Security.evtx`) and the command line or path under each finding
 - **Pattern counts** per source
 
@@ -171,7 +176,7 @@ The tool names, staging folders, command-line techniques and suspicious shellbag
 
 ## Test case and regression test
 
-`tools\New-TestCase.ps1 -CaseFolder C:\Cases\KapeTest` writes synthetic EZ Tools output for three hosts (documentation-range IPs, fictional names). The story: RDP brute force on WS01, mimikatz, a backdoor account, rclone uploading about 2 GB (SRUM), PsExec to FS01, shadow copies deleted and ransom notes, a webshell on FS01, and Kerberoasting and DCSync against DC01.
+`tools\New-TestCase.ps1 -CaseFolder C:\Cases\KapeTest` writes synthetic EZ Tools output for three hosts (documentation-range IPs, fictional names). The story: RDP brute force on WS01 and a 42-minute RDP session from the internet, mimikatz, a backdoor account, WMI persistence and remote WMIC execution, rclone uploading about 2 GB (SRUM), PsExec to FS01, shadow copies deleted and ransom notes, a webshell on FS01, and Kerberoasting and DCSync against DC01. WS01 also has a Hayabusa CSV (local time +01:00, with an informational hit that must be skipped) and FS01 a Chainsaw CSV.
 
 After a build, `tools\Test-Detections.ps1` builds that case, runs the analyser headless and checks every detection it is built to trigger, and that noise such as OneDrive uploads is not flagged. It exits with code 1 when a check fails. Pass `-Exe` to test a published build. GitHub Actions runs the build and this test on every push and pull request (`.github/workflows/build.yml`); the badge at the top shows the latest result.
 

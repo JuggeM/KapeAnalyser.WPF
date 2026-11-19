@@ -10,6 +10,8 @@ public static class HostReport
     public const string QuickWinsFile = "QuickWins.txt";
     public const string FindingsFile = "Findings.csv";
     public const string LogonsFile = "Logons.csv";
+    public const string SessionsFile = "Sessions.csv";
+    public const int MaxSessions = 30;
     public const string HostInfoFile = "host.txt";
     public const string IocHitsFile = "IocHits.csv";
     public const int MaxPerSection = 300;
@@ -32,6 +34,7 @@ public static class HostReport
 
         WriteFindingsCsv(Path.Combine(outDir, FindingsFile), host.Hostname, findings);
         WriteLogonsCsv(Path.Combine(outDir, LogonsFile), host.Hostname, ctx.Logons.Values);
+        WriteSessionsCsv(Path.Combine(outDir, SessionsFile), host.Hostname, ctx.Sessions);
         File.WriteAllText(Path.Combine(outDir, QuickWinsFile), BuildQuickWins(host, ctx, findings, modules, caseName, analyst), Utf8);
     }
 
@@ -136,6 +139,25 @@ public static class HostReport
             sb.AppendLine();
         }
 
+        // LOGON SESSIONS: who had a desktop, from where, and for how long (network logons are in Sessions.csv)
+        var desk = ctx.Sessions.Where(s => s.LogonType is "Interactive" or "RemoteInteractive" or "CachedInteractive" or "Unlock")
+            .OrderByDescending(s => DetectionRules.IsExternalIp(s.SourceIp)).ThenByDescending(s => s.Duration ?? TimeSpan.MaxValue)
+            .ToList();
+        if (desk.Count > 0)
+        {
+            Header(sb, "LOGON SESSIONS (interactive and RDP — all sessions in Sessions.csv)");
+            foreach (var s in desk.Take(MaxSessions))
+            {
+                var src = string.Join(" ", new[] { s.SourceHost, s.SourceIp.Length > 0 ? $"({s.SourceIp})" : "" }.Where(x => x.Length > 0));
+                if (src.Length == 0) src = "local";
+                var ext = DetectionRules.IsExternalIp(s.SourceIp) ? " EXTERNAL" : "";
+                var dur = s.Duration is TimeSpan d ? Analysers.EventLogAnalyser.Dur(d) : "open";
+                sb.AppendLine($"  {s.LogonType,-20}  {s.User,-28} from {src,-34} {Fmt(s.Start)} → {(s.End.HasValue ? Fmt(s.End) : "-")}  {dur,8}  [{s.Via}{(s.EndedBy.Length > 0 ? " / " + s.EndedBy : "")}]{ext}");
+            }
+            if (desk.Count > MaxSessions) sb.AppendLine($"  … {desk.Count - MaxSessions} more in {SessionsFile}");
+            sb.AppendLine();
+        }
+
         // Per-source sections: "  <artifact>: [SEV] [time UTC] text", detail indented below
         foreach (var (source, _, _) in modules)
         {
@@ -195,6 +217,16 @@ public static class HostReport
         foreach (var l in logons.OrderBy(l => l.First ?? DateTime.MaxValue))
             w.WriteLine(Csv.Row(host, l.User, l.LogonType, l.SourceHost, l.SourceIp, l.Via,
                 l.Count.ToString(CultureInfo.InvariantCulture), Iso(l.First), Iso(l.Last)));
+    }
+
+    private static void WriteSessionsCsv(string path, string host, IEnumerable<LogonSession> sessions)
+    {
+        using var w = new StreamWriter(path, false, Utf8);
+        w.WriteLine("Host,User,LogonType,SourceHost,SourceIp,Start,End,DurationMinutes,EndedBy,Id,Via");
+        foreach (var s in sessions.OrderBy(s => s.Start ?? DateTime.MaxValue))
+            w.WriteLine(Csv.Row(host, s.User, s.LogonType, s.SourceHost, s.SourceIp, Iso(s.Start), Iso(s.End),
+                s.Duration is TimeSpan d ? Math.Round(d.TotalMinutes, 1).ToString(CultureInfo.InvariantCulture) : "",
+                s.EndedBy, s.Id, s.Via));
     }
 
     internal static string Iso(DateTime? t) => t.HasValue ? t.Value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : "";

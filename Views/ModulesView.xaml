@@ -126,6 +126,16 @@
                     <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseSrum}" VerticalAlignment="Center" Margin="0"/>
                 </Grid>
             </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="0,0,6,8" ToolTip="Sigma hits from Hayabusa (dfir-timeline CSV) or Chainsaw (hunt --csv): one finding per rule, critical/high/medium/low by the rule level; informational hits are skipped.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Sigma (Hayabusa / Chainsaw)" FontWeight="Medium"/>
+                        <TextBlock Text="CSV with 'hayabusa' or 'chainsaw' in the name, or sigma.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseSigma}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
         </UniformGrid>
     </StackPanel>
 </UserControl>

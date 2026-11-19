@@ -21,19 +21,19 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
     private static readonly HashSet<int> Interesting = new()
     {
         // Security
-        1102, 4624, 4625, 4648, 4662, 4688, 4697, 4698, 4719, 4720, 4722, 4724, 4726, 4728, 4732, 4741, 4742, 4756, 4769, 4771, 4776, 4781, 5136, 5140, 5145,
+        1102, 4624, 4625, 4634, 4647, 4648, 4662, 4688, 4697, 4698, 4719, 4720, 4722, 4724, 4726, 4728, 4732, 4741, 4742, 4756, 4769, 4771, 4776, 4781, 5136, 5140, 5145,
         // System
         104, 7045,
         // RDP
-        21, 25, 1149,
+        21, 23, 24, 25, 1149,
         // PowerShell
         400, 600, 800, 4104,
         // Defender
         1006, 1015, 1116, 1117, 5001, 5007, 5010, 5012,
-        // Sysmon
-        1, 3, 10, 11, 13,
+        // Sysmon (19-21 WMI filter / consumer / binding)
+        1, 3, 10, 11, 13, 19, 20,
         // Task scheduler, WMI, BITS
-        106, 200, 201, 5861, 59,
+        106, 200, 201, 5857, 5860, 5861, 59,
     };
 
     private static readonly HashSet<string> AdminGroups = new(StringComparer.OrdinalIgnoreCase)
@@ -99,6 +99,7 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
             switch (e.Id)
             {
                 case 4624: Logon(e, ctx); return;
+                case 4634 or 4647: SessionEnd(e); return;
                 case 4625: Failure(e, e.D("IpAddress"), e.D("WorkstationName"), e.D("TargetUserName"), "4625"); return;
                 case 4771: Failure(e, StripIpPrefix(e.D("IpAddress")), "", e.D("TargetUserName"), "4771"); return;
                 case 4776:
@@ -147,8 +148,10 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
             Rdp(e, ctx, user, e.D("Param3"), "RDP 1149");
             return;
         }
-        if (e.Is("LocalSessionManager") && e.Id is 21 or 25)
+        if (e.Is("LocalSessionManager") && e.Id is 21 or 23 or 24 or 25)
         {
+            RdpSession(e);
+            if (e.Id is 23 or 24) return;
             var addr = e.D("Address");
             if (!DetectionRules.IsUsableIp(addr)) return;
             Rdp(e, ctx, e.D("User"), addr, e.Id == 21 ? "RDP 21" : "RDP 25");
@@ -190,6 +193,24 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
             return;
         }
 
+        if (e.Is("WMI-Activity") && e.Id == 5860)
+        {
+            // Temporary event consumer: lives only while the registering process runs (often a script)
+            var query = e.D("Query");
+            _agg.Add($"wmi5860|{query}", Severity.Medium, e.Time, Source, "WMI temporary event consumer",
+                $"WMI temporary event consumer registered by {FirstNonEmpty(e.D("User"), "?")}: {Trunc(query, 160)}",
+                Trunc(FirstNonEmpty(e.D("PossibleCause"), e.D("NamespaceName")), 500), e.Artifact);
+            return;
+        }
+        if (e.Is("WMI-Activity") && e.Id == 5857)
+        {
+            // Provider DLL loaded: normal ones live under System32 (wbem) or Program Files
+            var path = e.D("ProviderPath");
+            if (path.Length == 0 || Regex.IsMatch(path, @"^%?(systemroot|windir)%?\\system32\\|^[a-z]:\\windows\\(system32|syswow64)\\|^[a-z]:\\program files( \(x86\))?\\", RegexOptions.IgnoreCase)) return;
+            _agg.Add($"wmi5857|{path}", ctx.Rules.ScoreBinaryPath(path)?.Sev ?? Severity.High, e.Time, Source, "WMI provider from unusual path",
+                $"WMI provider {FirstNonEmpty(e.D("ProviderName"), "?")} loaded from {path} (host {e.D("HostProcess")})", path, e.Artifact);
+            return;
+        }
         if (e.Is("WMI-Activity") && e.Id == 5861)
         {
             var consumer = FirstNonEmpty(e.D("CONSUMER"), e.D("Consumer"));
@@ -221,6 +242,13 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
         var ws = e.D("WorkstationName");
         var acct = Acct(e.D("TargetDomainName"), user);
 
+        if (type is "2" or "3" or "7" or "10" or "11")
+            StartSession(e.D("TargetLogonId"), new LogonSession
+            {
+                User = acct, LogonType = LogonTypeName(type), SourceHost = ws is "-" ? "" : ws, SourceIp = DetectionRules.IsUsableIp(ip) ? ip : "",
+                Id = e.D("TargetLogonId"), Start = e.Time, Via = "4624",
+            });
+
         if (type is "3" or "10" or "8" or "9")
         {
             ctx.RecordLogon(acct, LogonTypeName(type), ws, ip, "4624", e.Time);
@@ -249,6 +277,98 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
                 break;
         }
     }
+
+    // ── Logon sessions ───────────────────────────────────────────────
+    private readonly List<LogonSession> _sessions = new();
+    private readonly Dictionary<string, LogonSession> _openById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, LogonSession> _openRdp = new(StringComparer.OrdinalIgnoreCase);
+
+    // Start and end events are replayed in time order in FlushSessions: archived logs and
+    // different channels arrive in file order, not time order.
+    private readonly List<(DateTime? Time, int Seq, Action Apply)> _sessionEvents = new();
+    private int _sessionSeq;
+
+    private void Queue(DateTime? t, Action apply) => _sessionEvents.Add((t, _sessionSeq++, apply));
+
+    private void StartSession(string id, LogonSession s) => Queue(s.Start, () =>
+    {
+        _sessions.Add(s);
+        if (id.Length > 0 && id != "0x0") _openById[id] = s;   // logon IDs are reused after a reboot: the newest wins
+    });
+
+    private void SessionEnd(Ev e)
+    {
+        var id = e.D("TargetLogonId");
+        if (id.Length == 0) return;
+        var time = e.Time;
+        var by = e.Id.ToString();
+        Queue(time, () =>
+        {
+            if (!_openById.TryGetValue(id, out var s)) return;
+            s.End = time;
+            s.EndedBy = by;
+            _openById.Remove(id);
+        });
+    }
+
+    /// <summary>RDP sessions from LocalSessionManager: 21 logon, 24 disconnect, 25 reconnect, 23 logoff.</summary>
+    private void RdpSession(Ev e)
+    {
+        var sid = e.D("SessionID");
+        if (sid.Length == 0) return;
+        var key = $"{sid}|{e.D("User")}";
+        var (id, time, user, addr) = (e.Id, e.Time, e.D("User"), e.D("Address"));
+        if (id == 21 && !DetectionRules.IsUsableIp(addr)) return;   // console logon ("LOCAL")
+        Queue(time, () =>
+        {
+            switch (id)
+            {
+                case 21:
+                    var s = new LogonSession { User = user, LogonType = "RemoteInteractive", SourceIp = addr, Id = $"RDP session {sid}", Start = time, Via = "RDP 21" };
+                    _sessions.Add(s);
+                    _openRdp[key] = s;
+                    break;
+                case 25 when _openRdp.TryGetValue(key, out var r):
+                    r.End = null; r.EndedBy = "";   // reconnected: still going
+                    break;
+                case 24 when _openRdp.TryGetValue(key, out var d):
+                    d.End = time; d.EndedBy = "RDP 24 disconnect";
+                    break;
+                case 23 when _openRdp.TryGetValue(key, out var o):
+                    o.End = time; o.EndedBy = "RDP 23 logoff";
+                    _openRdp.Remove(key);
+                    break;
+            }
+        });
+    }
+
+    private void FlushSessions(AnalysisContext ctx)
+    {
+        foreach (var (_, _, apply) in _sessionEvents.OrderBy(x => x.Time ?? DateTime.MaxValue).ThenBy(x => x.Seq)) apply();
+        _sessionEvents.Clear();
+        ctx.Sessions.AddRange(_sessions.OrderBy(s => s.Start ?? DateTime.MaxValue));
+        // An RDP session from the internet: how long the attacker had a desktop
+        var rdpFromSecurity = _sessions.Where(s => s.Via == "4624" && s.IsRdp).ToList();
+        foreach (var s in _sessions.Where(s => s.IsRdp && DetectionRules.IsExternalIp(s.SourceIp)))
+        {
+            // The same session seen in the Security log and the RDP session log: report it once (both stay in Sessions.csv)
+            if (s.Via != "4624" && rdpFromSecurity.Any(x => x.SourceIp == s.SourceIp && x.Start.HasValue && s.Start.HasValue
+                                                           && Math.Abs((x.Start.Value - s.Start.Value).TotalMinutes) <= 5)) continue;
+            var span = s.Duration is TimeSpan d ? $"lasted {Dur(d)} ({s.Start:HH:mm} → {s.End:HH:mm} UTC, ended by {s.EndedBy})"
+                                                : "has no logoff (still open at collection, or the log rolled)";
+            ctx.Add(new Finding
+            {
+                Severity = Severity.High, TimeUtc = s.Start, LastUtc = s.End ?? s.Start, Source = Source,
+                Category = "RDP session from external IP",
+                Text = $"RDP session from external IP {s.SourceIp} as {s.User} {span}",
+                Detail = $"{s.Via}, {s.Id}", Artifact = s.Via == "4624" ? "Security.evtx" : "LocalSessionManager.evtx",
+            });
+        }
+        _sessions.Clear(); _openById.Clear(); _openRdp.Clear();
+    }
+
+    internal static string Dur(TimeSpan d) =>
+        d.TotalHours >= 1 ? FormattableString.Invariant($"{d.TotalHours:0.#} h") : FormattableString.Invariant($"{Math.Max(1, (int)Math.Round(d.TotalMinutes))} min");
 
     private void Rdp(Ev e, AnalysisContext ctx, string user, string ip, string? via)
     {
@@ -614,6 +734,35 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
                     $"File created: {DetectionRules.FileNameOf(f)} — {tool.Category}", f, e.Artifact);
                 break;
             }
+            case 19:
+            {
+                // WMI event filter: what the subscription waits for
+                _agg.Add($"sys19|{e.D("Name")}", Severity.Medium, e.Time, Source, "WMI event filter created",
+                    $"WMI event filter {e.D("Operation").ToLowerInvariant()}: {e.D("Name")} by {e.D("User")}", Trunc(e.D("Query"), 1000), e.Artifact);
+                break;
+            }
+            case 20:
+            {
+                // WMI consumer: what runs. Command line and script consumers execute code.
+                var dest = e.D("Destination");
+                var type = e.D("Type");
+                var hits = ctx.Rules.MatchCommandLine(dest);
+                var sev = type.Contains("Command", StringComparison.OrdinalIgnoreCase) || type.Contains("Script", StringComparison.OrdinalIgnoreCase)
+                    ? Severity.High : Severity.Medium;
+                if (hits.Count > 0 && hits.Min(h => h.Severity) < sev) sev = hits.Min(h => h.Severity);
+                _agg.Add($"sys20|{e.D("Name")}", sev, e.Time, Source, "WMI event consumer created",
+                    $"WMI {FirstNonEmpty(type, "event")} consumer {e.D("Operation").ToLowerInvariant()}: {e.D("Name")} by {e.D("User")}" +
+                    (hits.Count > 0 ? " — " + string.Join(", ", hits.Select(h => h.Label).Distinct()) : ""),
+                    Trunc(dest, 1000), e.Artifact);
+                break;
+            }
+            case 21:
+            {
+                // Binding: filter + consumer = persistence that survives reboots
+                _agg.Add($"sys21|{e.D("Consumer")}|{e.D("Filter")}", Severity.High, e.Time, Source, "WMI subscription bound (persistence)",
+                    $"WMI filter bound to consumer by {e.D("User")}: {Trunc(e.D("Filter"), 80)} → {Trunc(e.D("Consumer"), 80)}", "", e.Artifact);
+                break;
+            }
             case 13:
             {
                 var key = e.D("TargetObject");
@@ -677,6 +826,7 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
             });
         }
 
+        FlushSessions(ctx);
         ctx.AddRange(_agg.Flush());
     }
 

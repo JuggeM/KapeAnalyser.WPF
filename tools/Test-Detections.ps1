@@ -66,12 +66,26 @@ Expect WS01 HIGH LNK 'Invoice\.lnk'
 Expect WS01 'CRITICAL|HIGH' SRUM 'rclone\.exe sent 2\.1 GB'
 Expect WS01 'CRITICAL|HIGH' SRUM 'Ran: rclone\.exe'
 ExpectNone WS01 SRUM 'onedrive|chrome|svchost'
+Expect WS01 HIGH EVTX 'RDP session from external IP 203\.0\.113\.45 as CORP\\jdoe lasted 42 min'
+Expect WS01 HIGH EVTX 'WMI filter bound to consumer'
+Expect WS01 HIGH EVTX 'WMI Command Line consumer created: SysUpdate'
+Expect WS01 MEDIUM EVTX 'WMI event filter created: SysUpdate'
+Expect WS01 HIGH EVTX 'Remote process via WMIC'
+Expect WS01 HIGH SIGMA 'Sigma \(Hayabusa\): Windows Defender Exclusion Added'
+ExpectNone WS01 SIGMA 'Logon \(Network\)'
+$hb = $findings | Where-Object { $_.Host -eq 'WS01' -and $_.Text -match 'Windows Defender Exclusion Added' } | Select-Object -First 1
+Check ($hb -and $hb.TimeUtc -eq '2026-11-01 09:11:00') "Hayabusa +01:00 time converted to UTC (got $($hb.TimeUtc))"
+$sessions = Import-Csv (Join-Path $processed 'WS01\Sessions.csv') -Encoding UTF8
+$rdp = @($sessions | Where-Object { $_.LogonType -eq 'RemoteInteractive' -and $_.SourceIp -eq '203.0.113.45' })
+Check ($rdp.Count -eq 2 -and ($rdp | Where-Object { $_.DurationMinutes -eq '42' -and $_.EndedBy -eq '4634' }) -and ($rdp | Where-Object { $_.EndedBy -eq 'RDP 23 logoff' })) "Sessions.csv: RDP session from 4624/4634 (42 min) and from LocalSessionManager (ended by 23)"
+Check (@($sessions | Where-Object { $_.LogonType -eq 'Interactive' -and $_.EndedBy -eq '4634' }).Count -eq 1) 'Sessions.csv: local console session with logoff'
 
 Write-Host 'FS01 (webshell, PsExec, ransomware prep)'
 Expect FS01 CRITICAL EVTX 'Web server started a shell: w3wp\.exe started cmd\.exe'
 Expect FS01 CRITICAL EVTX 'Shadow copies deleted'
 Expect FS01 HIGH EVTX 'PSEXESVC'
 Expect FS01 CRITICAL MFT 'ransom note'
+Expect FS01 MEDIUM SIGMA 'Sigma \(Chainsaw\): Shadow Copy Deletion Using OS Utilities on FS01'
 
 Write-Host 'DC01 (domain attacks)'
 Expect DC01 CRITICAL EVTX 'DCSync: CORP\\jdoe'

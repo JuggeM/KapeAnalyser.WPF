@@ -63,6 +63,7 @@ public class AnalyserConfig
     public bool AnalyseRecycleBin { get; set; } = true;
     public bool AnalyseShellbags { get; set; } = true;
     public bool AnalyseSrum { get; set; } = true;
+    public bool AnalyseSigma { get; set; } = true;
 
     // ── Detection ────────────────────────────────────────────────────
     /// <summary>Detection rules file; empty = rules.json next to the exe.</summary>

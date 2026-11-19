@@ -15,6 +15,28 @@ public sealed class LogonRecord
     public DateTime? Last { get; set; }
 }
 
+/// <summary>
+/// One logon session: start from 4624 (or RDP LocalSessionManager 21), end
+/// from the matching 4634/4647 (same logon ID) or RDP 23/24 (same session).
+/// No end means the session was still open at collection, or the log rolled.
+/// </summary>
+public sealed class LogonSession
+{
+    public string User { get; set; } = "";
+    public string LogonType { get; set; } = "";
+    public string SourceHost { get; set; } = "";
+    public string SourceIp { get; set; } = "";
+    /// <summary>TargetLogonId (4624) or RDP session ID.</summary>
+    public string Id { get; set; } = "";
+    public DateTime? Start { get; set; }
+    public DateTime? End { get; set; }
+    /// <summary>"4634", "4647", "RDP 23 logoff", "RDP 24 disconnect".</summary>
+    public string EndedBy { get; set; } = "";
+    public string Via { get; set; } = "";
+    public TimeSpan? Duration => Start.HasValue && End.HasValue && End >= Start ? End - Start : null;
+    public bool IsRdp => LogonType == "RemoteInteractive" || Via.StartsWith("RDP", StringComparison.Ordinal);
+}
+
 /// <summary>Per-source coverage: which KAPE outputs were read and what time span they hold.</summary>
 public sealed class SourceCoverage
 {
@@ -47,6 +69,7 @@ public sealed class AnalysisContext
     /// <summary>Hostname votes (EvtxECmd Computer column, registry ComputerName).</summary>
     public Dictionary<string, long> HostnameVotes { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, LogonRecord> Logons { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<LogonSession> Sessions { get; } = new();
     public HashSet<string> HostIps { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public AnalysisContext(AnalyserConfig config, string hostFolder, Action<string> log, CancellationToken ct)
