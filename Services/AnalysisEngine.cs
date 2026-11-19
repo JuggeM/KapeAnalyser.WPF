@@ -160,11 +160,25 @@ public sealed class AnalysisEngine
             }
         }
 
+        string? summary = null;
         try
         {
-            var p = CaseSummary.Write(outputBase, caseName, analyst);
-            if (p != null) log($"Case summary written: {p}");
+            summary = CaseSummary.Write(outputBase, caseName, analyst);
+            if (summary != null) log($"Case summary written: {summary}");
         }
         catch (Exception ex) { log($"[WARN] Case summary failed: {ex.Message}"); }
+
+        if (summary == null) return;
+        var tracker = Path.Combine(outputBase, CaseTracker.FileName);
+        try
+        {
+            // Every critical and high finding as case tracker rows; the Case report panel exports the ticked ones
+            var data = CaseReport.Build(outputBase, caseName, analyst);
+            var rows = CaseTracker.Rows(data, data.Findings.Where(f => f.Rank <= 1));
+            CaseTracker.Write(tracker, rows);
+            log($"Case tracker rows ({rows.Count} critical/high) written: {tracker}");
+        }
+        catch (IOException ex) { log($"[WARN] {CaseTracker.FileName} not written — is it open in Excel? {ex.Message}"); }
+        catch (Exception ex) { log($"[WARN] {CaseTracker.FileName} not written: {ex.Message}"); }
     }
 }

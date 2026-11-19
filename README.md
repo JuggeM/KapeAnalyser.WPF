@@ -66,6 +66,7 @@ CaseFolder\
         ├── CaseReport.html     ← case report (Case report panel → Open in browser)
         ├── CaseReport.json     ← your edits to the case report
         ├── CaseFindings.csv    ← all hosts' findings (Timeline Explorer)
+        ├── CaseTracker.xlsx    ← critical/high findings as case tracker rows (Excel)
         └── WS01\
             ├── QuickWins.txt / .rtf  ← host, key findings, IOCs seen in findings, coverage, logons, one table per source
             ├── Findings.csv    ← one row per finding, with detail and artifact
@@ -141,6 +142,15 @@ The **Case report** panel turns every host's `Findings.csv` into a readable Engl
 - **Open in browser** writes `Processed\Level2\CaseReport.html`; **Export ▾** saves HTML, Word (.docx, with real heading styles) or RTF. Print the HTML to get a PDF
 
 Edits are saved to `Processed\Level2\CaseReport.json` and kept when you run the analysis again.
+
+### Case tracker export
+
+**Export ▾ → Case tracker rows (.xlsx)** writes the ticked findings as rows for the case tracker spreadsheet, in its column order: `date/time, DataSource, hostsystem, host IP Address, Eventdescription, Account, SourceHost, SourceIP, Destination Host, Remote URL, Destination IP, Mitre Framework, Notes, Analyst, ReportHeading`. Every run also writes `Processed\Level2\CaseTracker.xlsx` with all critical and high findings.
+
+- **date/time** is a real Excel date (UTC); **DataSource** is `KAPE: <module>`; **Notes** holds severity, likelihood, the finding's detail, your note and the host folder
+- **Account**, **SourceHost/SourceIP** and **Destination Host/IP** are read from the finding text: "from 203.0.113.45 (KALI)" is the source and the host itself the destination; an address the host reached (`\\10.10.1.30\share`, `wmic /node:`, a download URL) is the destination. Check them before you paste; anything not stated in the finding is left empty
+- **Mitre Framework** and **ReportHeading** are left empty for you to fill in
+- The CSIRT UAC Parser writes the same file with the same columns, so Windows and Linux hosts land in the tracker the same way
 
 ## Detection rules (rules.json)
 
