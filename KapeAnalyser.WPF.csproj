@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0-windows</TargetFramework>
@@ -12,6 +12,10 @@
 	</PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
+	</ItemGroup>
+	<ItemGroup>
+		<!-- Detection rules: a loose file next to the exe (also in single-file publish) so analysts can edit it -->
+		<None Update="rules.json" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 	<ItemGroup>
 		<Compile Remove="tools\**" />

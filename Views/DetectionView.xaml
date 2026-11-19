@@ -4,6 +4,34 @@
     <StackPanel>
         <TextBlock Text="Detection" Style="{StaticResource SectionTitle}"/>
 
+        <TextBlock Text="Detection rules file — tools, staging folders and command-line patterns" Style="{StaticResource FieldLabel}"/>
+        <Grid Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox Text="{Binding RulesPathText, UpdateSourceTrigger=LostFocus}" Margin="0,0,8,0"
+                     ToolTip="Empty = rules.json next to KapeAnalyser.WPF.exe"/>
+            <Button Grid.Column="1" Content="Browse…" Style="{StaticResource StandardButton}" Command="{Binding BrowseRulesCommand}"/>
+            <Button Grid.Column="2" Content="Open" Style="{StaticResource StandardButton}" Margin="8,0,0,0" Command="{Binding OpenRulesCommand}"
+                    ToolTip="Open the rules file in your editor"/>
+            <Button Grid.Column="3" Content="Reload" Style="{StaticResource StandardButton}" Margin="8,0,0,0" Command="{Binding ReloadRulesCommand}"
+                    ToolTip="Read the rules file again (also done at the start of every run)"/>
+        </Grid>
+        <TextBlock Text="{Binding RulesStatus}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding RulesOk}" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <Separator/>
+
         <TextBlock Text="Brute force threshold (failed logons from one source)" Style="{StaticResource FieldLabel}"/>
         <TextBox Text="{Binding Config.BruteForceThreshold, UpdateSourceTrigger=PropertyChanged}" Width="120" HorizontalAlignment="Left" Margin="0,0,0,14"/>
 
@@ -16,7 +44,7 @@
         <TextBox Text="{Binding ExtraKeywordsText, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" Height="110"
                  VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" Margin="0,0,0,4"/>
         <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,14"
-                   Text="Use for names from the ticket or threat intel, e.g. a malware file name or a staging folder. Built-in rules already cover common attacker tools (mimikatz, rclone, PsExec, AnyDesk, SharpHound, …)."/>
+                   Text="Use for names from the ticket or threat intel, e.g. a malware file name or a staging folder. The rules file already covers common attacker and dual-use tools (credential theft, lateral movement, remote access, exfiltration, …); add permanent ones there."/>
 
         <TextBlock Text="Whitelisted path fragments — never flagged (one per line)" Style="{StaticResource FieldLabel}"/>
         <TextBox Text="{Binding WhitelistText, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" Height="110"

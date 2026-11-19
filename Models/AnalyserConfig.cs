@@ -65,6 +65,12 @@ public class AnalyserConfig
     public bool AnalyseSrum { get; set; } = true;
 
     // ── Detection ────────────────────────────────────────────────────
+    /// <summary>Detection rules file; empty = rules.json next to the exe.</summary>
+    public string RulesPath { get; set; } = string.Empty;
+
+    public string ResolveRulesPath() =>
+        string.IsNullOrWhiteSpace(RulesPath) ? Core.RuleSet.DefaultPath : Path.GetFullPath(RulesPath);
+
     /// <summary>Failed logons from one source before it is flagged as brute force.</summary>
     public int BruteForceThreshold { get; set; } = 10;
 

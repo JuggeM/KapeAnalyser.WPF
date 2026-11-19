@@ -39,6 +39,7 @@ public partial class App : Application
             OutputPath = Arg("--out", AnalyserConfig.DefaultOutputPath),
             CaseName = Arg("--name", ""),
             AnalystName = Arg("--analyst", Environment.UserName),
+            RulesPath = Arg("--rules", ""),
         };
         int code = 0;
         try

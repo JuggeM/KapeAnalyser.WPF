@@ -1,0 +1,921 @@
+{
+  "_comment": [
+    "KapeAnalyser detection rules. Loaded at start of each run from rules.json next to KapeAnalyser.WPF.exe.",
+    "Edit freely: comments (// ...) and trailing commas are allowed. Patterns are .NET regular expressions, matched case-insensitively.",
+    "severity: Critical, High, Medium or Suspicious. Analyst keywords and whitelisted paths are set in the Detection panel instead."
+  ],
+  "version": 1,
+  "tools": [
+    {
+      "name": "mimikatz",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "mimilib",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "mimidrv",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "lazagne",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "nanodump",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "pypykatz",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "rubeus",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "kekeo",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "safetykatz",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "secretsdump",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "procdump",
+      "category": "Memory dump tool",
+      "severity": "High",
+      "group": "Credential access"
+    },
+    {
+      "name": "procdump64",
+      "category": "Memory dump tool",
+      "severity": "High",
+      "group": "Credential access"
+    },
+    {
+      "name": "dumpert",
+      "category": "Credential theft tool",
+      "severity": "Critical",
+      "group": "Credential access"
+    },
+    {
+      "name": "kerbrute",
+      "category": "Credential attack tool",
+      "severity": "High",
+      "group": "Credential access"
+    },
+    {
+      "name": "responder",
+      "category": "Credential attack tool",
+      "severity": "High",
+      "group": "Credential access"
+    },
+    {
+      "name": "hashcat",
+      "category": "Password cracking tool",
+      "severity": "High",
+      "group": "Credential access"
+    },
+    {
+      "name": "ntdsaudit",
+      "category": "Credential theft tool",
+      "severity": "High",
+      "group": "Credential access"
+    },
+    {
+      "name": "psexec",
+      "category": "Remote execution tool",
+      "severity": "High",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "psexec64",
+      "category": "Remote execution tool",
+      "severity": "High",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "psexesvc",
+      "category": "Remote execution service (PsExec target)",
+      "severity": "High",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "paexec",
+      "category": "Remote execution tool",
+      "severity": "High",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "remcom",
+      "category": "Remote execution tool",
+      "severity": "High",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "crackmapexec",
+      "category": "Lateral movement tool",
+      "severity": "Critical",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "cme",
+      "category": "Lateral movement tool",
+      "severity": "High",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "netexec",
+      "category": "Lateral movement tool",
+      "severity": "Critical",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "nxc",
+      "category": "Lateral movement tool",
+      "severity": "High",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "wmiexec",
+      "category": "Lateral movement tool",
+      "severity": "Critical",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "smbexec",
+      "category": "Lateral movement tool",
+      "severity": "Critical",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "atexec",
+      "category": "Lateral movement tool",
+      "severity": "Critical",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "dcomexec",
+      "category": "Lateral movement tool",
+      "severity": "Critical",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "sharpexec",
+      "category": "Lateral movement tool",
+      "severity": "High",
+      "group": "Lateral movement / execution"
+    },
+    {
+      "name": "sharphound",
+      "category": "AD reconnaissance tool",
+      "severity": "Critical",
+      "group": "Recon"
+    },
+    {
+      "name": "bloodhound",
+      "category": "AD reconnaissance tool",
+      "severity": "Critical",
+      "group": "Recon"
+    },
+    {
+      "name": "azurehound",
+      "category": "AD reconnaissance tool",
+      "severity": "Critical",
+      "group": "Recon"
+    },
+    {
+      "name": "adfind",
+      "category": "AD reconnaissance tool",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "adrecon",
+      "category": "AD reconnaissance tool",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "pingcastle",
+      "category": "AD reconnaissance tool",
+      "severity": "Medium",
+      "group": "Recon"
+    },
+    {
+      "name": "seatbelt",
+      "category": "Host reconnaissance tool",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "winpeas",
+      "category": "Privilege escalation tool",
+      "severity": "Critical",
+      "group": "Recon"
+    },
+    {
+      "name": "sharpup",
+      "category": "Privilege escalation tool",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "powerup",
+      "category": "Privilege escalation tool",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "advanced_ip_scanner",
+      "category": "Network scanner",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "advanced ip scanner",
+      "category": "Network scanner",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "netscan",
+      "category": "Network scanner",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "angryip",
+      "category": "Network scanner",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "ipscan",
+      "category": "Network scanner",
+      "severity": "Medium",
+      "group": "Recon"
+    },
+    {
+      "name": "nmap",
+      "category": "Network scanner",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "masscan",
+      "category": "Network scanner",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "softperfect",
+      "category": "Network scanner",
+      "severity": "High",
+      "group": "Recon"
+    },
+    {
+      "name": "lansweeper",
+      "category": "Network scanner",
+      "severity": "Medium",
+      "group": "Recon"
+    },
+    {
+      "name": "nltest",
+      "category": "Domain trust discovery",
+      "severity": "Suspicious",
+      "group": "Recon"
+    },
+    {
+      "name": "plink",
+      "category": "Tunnelling tool",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "chisel",
+      "category": "Tunnelling tool",
+      "severity": "Critical",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "ligolo",
+      "category": "Tunnelling tool",
+      "severity": "Critical",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "ngrok",
+      "category": "Tunnelling tool",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "cloudflared",
+      "category": "Tunnelling tool",
+      "severity": "Medium",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "frpc",
+      "category": "Tunnelling tool",
+      "severity": "Critical",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "gost",
+      "category": "Tunnelling tool",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "socat",
+      "category": "Tunnelling tool",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "ncat",
+      "category": "Netcat",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "nc",
+      "category": "Netcat",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "nc64",
+      "category": "Netcat",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "beacon",
+      "category": "C2 implant (name)",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "sliver",
+      "category": "C2 implant (name)",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "havoc",
+      "category": "C2 implant (name)",
+      "severity": "High",
+      "group": "Tunnelling / C2"
+    },
+    {
+      "name": "anydesk",
+      "category": "Remote access software",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "teamviewer",
+      "category": "Remote access software",
+      "severity": "Suspicious",
+      "group": "Remote access software"
+    },
+    {
+      "name": "screenconnect",
+      "category": "Remote access software",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "connectwisecontrol",
+      "category": "Remote access software",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "atera",
+      "category": "Remote access software",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "splashtop",
+      "category": "Remote access software",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "rustdesk",
+      "category": "Remote access software",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "meshagent",
+      "category": "Remote access software",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "tacticalrmm",
+      "category": "Remote access software",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "netsupport",
+      "category": "Remote access software",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "client32",
+      "category": "Remote access software (NetSupport)",
+      "severity": "Medium",
+      "group": "Remote access software"
+    },
+    {
+      "name": "logmein",
+      "category": "Remote access software",
+      "severity": "Suspicious",
+      "group": "Remote access software"
+    },
+    {
+      "name": "ammyy",
+      "category": "Remote access software",
+      "severity": "High",
+      "group": "Remote access software"
+    },
+    {
+      "name": "rclone",
+      "category": "Exfiltration tool",
+      "severity": "Critical",
+      "group": "Exfiltration"
+    },
+    {
+      "name": "megasync",
+      "category": "Exfiltration tool",
+      "severity": "High",
+      "group": "Exfiltration"
+    },
+    {
+      "name": "megacmd",
+      "category": "Exfiltration tool",
+      "severity": "High",
+      "group": "Exfiltration"
+    },
+    {
+      "name": "restic",
+      "category": "Exfiltration tool",
+      "severity": "High",
+      "group": "Exfiltration"
+    },
+    {
+      "name": "filezilla",
+      "category": "File transfer client",
+      "severity": "Suspicious",
+      "group": "Exfiltration"
+    },
+    {
+      "name": "winscp",
+      "category": "File transfer client",
+      "severity": "Suspicious",
+      "group": "Exfiltration"
+    },
+    {
+      "name": "pscp",
+      "category": "File transfer client",
+      "severity": "Medium",
+      "group": "Exfiltration"
+    },
+    {
+      "name": "exmatter",
+      "category": "Exfiltration tool",
+      "severity": "Critical",
+      "group": "Exfiltration"
+    },
+    {
+      "name": "stealbit",
+      "category": "Exfiltration tool",
+      "severity": "Critical",
+      "group": "Exfiltration"
+    },
+    {
+      "name": "defendercontrol",
+      "category": "Defence evasion tool",
+      "severity": "Critical",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "dcontrol",
+      "category": "Defence evasion tool",
+      "severity": "Critical",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "gmer",
+      "category": "Rootkit / AV-killer tool",
+      "severity": "High",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "processhacker",
+      "category": "Process tool (AV-killer use)",
+      "severity": "Medium",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "systeminformer",
+      "category": "Process tool (AV-killer use)",
+      "severity": "Medium",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "pchunter",
+      "category": "Rootkit / AV-killer tool",
+      "severity": "High",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "powertool",
+      "category": "Rootkit / AV-killer tool",
+      "severity": "High",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "iobitunlocker",
+      "category": "Defence evasion tool",
+      "severity": "High",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "backstab",
+      "category": "Defence evasion tool",
+      "severity": "Critical",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "edrsilencer",
+      "category": "Defence evasion tool",
+      "severity": "Critical",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "terminator",
+      "category": "Defence evasion tool",
+      "severity": "High",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "everything",
+      "category": "File search tool (ransomware use)",
+      "severity": "Suspicious",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "ccleaner",
+      "category": "Anti-forensics tool",
+      "severity": "Medium",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "bleachbit",
+      "category": "Anti-forensics tool",
+      "severity": "High",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "sdelete",
+      "category": "Anti-forensics tool",
+      "severity": "High",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "sdelete64",
+      "category": "Anti-forensics tool",
+      "severity": "High",
+      "group": "Defence evasion / impact"
+    },
+    {
+      "name": "timestomp",
+      "category": "Anti-forensics tool",
+      "severity": "Critical",
+      "group": "Defence evasion / impact"
+    }
+  ],
+  "stagingFolders": [
+    {
+      "pattern": "\\\\users\\\\public\\\\",
+      "label": "\\Users\\Public"
+    },
+    {
+      "pattern": "\\\\appdata\\\\local\\\\temp\\\\",
+      "label": "user Temp"
+    },
+    {
+      "pattern": "\\\\windows\\\\temp\\\\",
+      "label": "\\Windows\\Temp"
+    },
+    {
+      "pattern": "\\\\perflogs\\\\",
+      "label": "\\PerfLogs"
+    },
+    {
+      "pattern": "\\\\\\$recycle\\.bin\\\\",
+      "label": "Recycle Bin"
+    },
+    {
+      "pattern": "\\\\programdata\\\\[^\\\\]+\\.(exe|dll|ps1|bat|cmd|vbs|js|hta|scr)$",
+      "label": "\\ProgramData root"
+    },
+    {
+      "pattern": "\\\\windows\\\\tasks\\\\",
+      "label": "\\Windows\\Tasks"
+    },
+    {
+      "pattern": "\\\\windows\\\\debug\\\\",
+      "label": "\\Windows\\debug"
+    },
+    {
+      "pattern": "\\\\windows\\\\tracing\\\\",
+      "label": "\\Windows\\Tracing"
+    },
+    {
+      "pattern": "\\\\windows\\\\fonts\\\\[^\\\\]+\\.(exe|dll|ps1|bat)$",
+      "label": "\\Windows\\Fonts"
+    },
+    {
+      "pattern": "\\\\appdata\\\\roaming\\\\[^\\\\]+\\.(exe|dll|ps1|bat|cmd|vbs)$",
+      "label": "AppData\\Roaming root"
+    },
+    {
+      "pattern": "^(\\\\volume\\{[^}]*\\}|[a-z]:)?\\\\[^\\\\]+\\.(exe|dll|ps1|bat|cmd|vbs|hta|scr)$",
+      "label": "drive root"
+    },
+    {
+      "pattern": "\\\\intel\\\\[^\\\\]+\\.(exe|dll)$",
+      "label": "\\Intel"
+    }
+  ],
+  "commandLines": [
+    {
+      "pattern": "vssadmin(\\.exe)?\\s+.*delete\\s+shadows",
+      "label": "Shadow copies deleted (vssadmin)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "wmic(\\.exe)?\\s+.*shadowcopy\\s+delete",
+      "label": "Shadow copies deleted (wmic)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "Win32_ShadowCopy.*(Delete|Remove)",
+      "label": "Shadow copies deleted (WMI)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "bcdedit(\\.exe)?.*(recoveryenabled\\s+no|bootstatuspolicy\\s+ignoreallfailures)",
+      "label": "Recovery disabled (bcdedit)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "wbadmin(\\.exe)?\\s+delete",
+      "label": "Backups deleted (wbadmin)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "wevtutil(\\.exe)?\\s+(cl|clear-log)\\b",
+      "label": "Event log cleared (wevtutil)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "Clear-EventLog|Remove-EventLog",
+      "label": "Event log cleared (PowerShell)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "comsvcs(\\.dll)?[\\s,#]+.*minidump",
+      "label": "LSASS dump via comsvcs.dll",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "procdump(64)?(\\.exe)?\\s.*lsass",
+      "label": "LSASS dump via procdump",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "sekurlsa::|lsadump::|kerberos::golden|privilege::debug",
+      "label": "Mimikatz command",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "reg(\\.exe)?\\s+save\\s+hklm\\\\(sam|system|security)",
+      "label": "Registry hive dump (SAM/SYSTEM/SECURITY)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "ntdsutil.*(ifm|create\\s+full)",
+      "label": "NTDS.dit dump (ntdsutil)",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "\\\\\\\\127\\.0\\.0\\.1\\\\ADMIN\\$\\\\__\\d",
+      "label": "Impacket wmiexec/smbexec output redirect",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "cmd(\\.exe)?\\s+/Q\\s+/c\\s+.*1>\\s*\\\\\\\\",
+      "label": "Impacket-style remote command",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "%COMSPEC%\\s+/Q\\s+/c\\s+echo",
+      "label": "Impacket smbexec service command",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "powershell.*\\s-(e|ec|en|enc|enco|encod|encode|encoded|encodedcommand)\\s+[A-Za-z0-9+/=]{20,}",
+      "label": "Encoded PowerShell command",
+      "severity": "High"
+    },
+    {
+      "pattern": "FromBase64String",
+      "label": "PowerShell base64 decode",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "\\b(IEX|Invoke-Expression)\\b.*(DownloadString|DownloadData|Net\\.WebClient|iwr|Invoke-WebRequest|irm)",
+      "label": "PowerShell download-and-execute",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "(DownloadString|DownloadFile|DownloadData)\\s*\\(\\s*['\"]?https?://",
+      "label": "PowerShell download cradle",
+      "severity": "High"
+    },
+    {
+      "pattern": "Invoke-WebRequest|\\biwr\\s+https?://|Start-BitsTransfer",
+      "label": "PowerShell download",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "-(nop|noprofile)\\b.*-(w|windowstyle)\\s+(h|hidden)",
+      "label": "Hidden PowerShell window",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "(Set-MpPreference|Add-MpPreference).*(Disable|Exclusion)",
+      "label": "Defender disabled / exclusion added",
+      "severity": "High"
+    },
+    {
+      "pattern": "certutil(\\.exe)?.*(-urlcache|-verifyctl).*https?://",
+      "label": "certutil download",
+      "severity": "High"
+    },
+    {
+      "pattern": "certutil(\\.exe)?.*-decode",
+      "label": "certutil decode",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "bitsadmin(\\.exe)?.*/(transfer|addfile).*https?://",
+      "label": "bitsadmin download",
+      "severity": "High"
+    },
+    {
+      "pattern": "mshta(\\.exe)?\\s+(\"|')?(https?|vbscript|javascript):",
+      "label": "mshta remote/script execution",
+      "severity": "High"
+    },
+    {
+      "pattern": "regsvr32(\\.exe)?.*/i:\\s*https?://",
+      "label": "regsvr32 remote scriptlet (Squiblydoo)",
+      "severity": "High"
+    },
+    {
+      "pattern": "rundll32(\\.exe)?\\s+.*javascript:",
+      "label": "rundll32 script execution",
+      "severity": "High"
+    },
+    {
+      "pattern": "net1?(\\.exe)?\\s+user\\s+\\S+\\s+\\S+\\s+/add",
+      "label": "Local account created (net user /add)",
+      "severity": "High"
+    },
+    {
+      "pattern": "net1?(\\.exe)?\\s+localgroup\\s+(administrators|\"remote desktop users\")\\s+\\S+\\s+/add",
+      "label": "User added to admin/RDP group",
+      "severity": "High"
+    },
+    {
+      "pattern": "net1?(\\.exe)?\\s+group\\s+\"?domain admins\"?\\s+.*/add",
+      "label": "User added to Domain Admins",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "schtasks(\\.exe)?\\s+/create",
+      "label": "Scheduled task created (schtasks)",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "\\bsc(\\.exe)?\\s+(\\\\\\\\\\S+\\s+)?create\\s",
+      "label": "Service created (sc)",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "reg(\\.exe)?\\s+add\\s+.*\\\\CurrentVersion\\\\Run",
+      "label": "Run key added (reg add)",
+      "severity": "High"
+    },
+    {
+      "pattern": "reg(\\.exe)?\\s+add\\s+.*(DisableAntiSpyware|DisableRealtimeMonitoring|fDenyTSConnections)",
+      "label": "Security setting changed (reg add)",
+      "severity": "High"
+    },
+    {
+      "pattern": "netsh(\\.exe)?\\s+(advfirewall\\s+set\\s+\\S+\\s+state\\s+off|firewall\\s+set\\s+opmode\\s+disable)",
+      "label": "Firewall disabled (netsh)",
+      "severity": "High"
+    },
+    {
+      "pattern": "netsh(\\.exe)?\\s+interface\\s+portproxy\\s+add",
+      "label": "Port proxy added (netsh)",
+      "severity": "High"
+    },
+    {
+      "pattern": "\\bnltest(\\.exe)?\\s+/(domain_trusts|dclist)",
+      "label": "Domain discovery (nltest)",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "\\bwhoami(\\.exe)?\\s+/(all|priv|groups)",
+      "label": "Privilege discovery (whoami)",
+      "severity": "Suspicious"
+    },
+    {
+      "pattern": "net1?(\\.exe)?\\s+(group\\s+\"?domain admins\"?|user\\s+/domain)",
+      "label": "Domain account discovery (net)",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "\\b(7z|7za|rar|winrar)(\\.exe)?\\s+a\\s.*(-p|-hp)",
+      "label": "Password-protected archive created",
+      "severity": "High"
+    },
+    {
+      "pattern": "\\brclone(\\.exe)?\\s+(copy|sync|move)",
+      "label": "rclone transfer",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "\\\\\\\\[^\\\\\\s]+\\\\(ADMIN|C)\\$\\\\",
+      "label": "Admin share path in command",
+      "severity": "Medium"
+    },
+    {
+      "pattern": "Invoke-(Mimikatz|Kerberoast|ShareFinder|BloodHound|Portscan|SMBExec|WMIExec|TokenManipulation)",
+      "label": "Offensive PowerShell function",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "\\bAmsiUtils\\b|amsiInitFailed",
+      "label": "AMSI bypass",
+      "severity": "Critical"
+    },
+    {
+      "pattern": "New-Object\\s+(System\\.)?Net\\.Sockets\\.TCPClient",
+      "label": "PowerShell TCP client (reverse shell)",
+      "severity": "Critical"
+    }
+  ],
+  "shellbagFolderNames": "\\b(mimikatz|rclone|exfil|loot|dump|dumps|hashes|creds|passwords?|sharphound|bloodhound|lazagne|procdump|psexec|cobalt|beacon|tools?|hack|payloads?|ransom|staging)\\b|\\\\\\\\[^\\\\]+\\\\(ADMIN|[A-Z])\\$"
+}

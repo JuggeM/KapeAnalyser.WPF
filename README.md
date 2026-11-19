@@ -1,12 +1,14 @@
 # CSIRT KAPE Analyser
 
+[![Build and test](https://github.com/JuggeM/KapeAnalyser.WPF/actions/workflows/build.yml/badge.svg)](https://github.com/JuggeM/KapeAnalyser.WPF/actions/workflows/build.yml)
+
 A Windows desktop application for triaging Windows collections: **DFIR ORC** collects, **KAPE** (EZ Tools modules) parses, and this tool turns the module CSVs into per-host findings, a case summary and a case report for stakeholders. It is the Windows counterpart to the [CSIRT UAC Parser](https://github.com/JuggeM/CsirtParser.WPF) and uses the same layout and output style.
 
 ![Case report panel: drafted bottom line, likelihood per finding, severity and status](docs/case-report.png)
 
 ## Download
 
-Get `KapeAnalyser.WPF.exe` from the [latest release](https://github.com/JuggeM/KapeAnalyser.WPF/releases/latest). It is a single self-contained file for 64-bit Windows: no install and no .NET runtime needed. The SHA256 is in the release notes. Windows Defender may flag it; see [Antivirus](#antivirus).
+Get `KapeAnalyser.WPF.exe` and `rules.json` from the [latest release](https://github.com/JuggeM/KapeAnalyser.WPF/releases/latest) and keep them in the same folder. The exe is a single self-contained file for 64-bit Windows: no install and no .NET runtime needed. The SHA256 is in the release notes. Releases up to v0.3.0 have the rules built in, ship as the exe alone, and may be flagged by Windows Defender; see [Antivirus](#antivirus).
 
 ## What it does
 
@@ -135,24 +137,51 @@ The **Case report** panel turns every host's `Findings.csv` into a readable Engl
 
 Edits are saved to `Processed\Level2\CaseReport.json` and kept when you run the analysis again.
 
+## Detection rules (rules.json)
+
+The tool names, staging folders, command-line techniques and suspicious shellbag folder names are not compiled in: they are read from `rules.json` next to `KapeAnalyser.WPF.exe` at the start of every run. Edit it to add a tool or a pattern without rebuilding; **Reload** in the Detection panel (or the next run) picks it up. Another file can be chosen in the Detection panel, or with `--rules <file>` when running headless.
+
+```jsonc
+{
+  "tools": [
+    { "name": "rclone", "category": "Exfiltration tool", "severity": "Critical", "group": "Exfiltration" },
+    …
+  ],
+  "stagingFolders": [ { "pattern": "\\\\perflogs\\\\", "label": "\\PerfLogs" }, … ],
+  "commandLines": [
+    { "pattern": "vssadmin(\\.exe)?\\s+.*delete\\s+shadows", "label": "Shadow copies deleted (vssadmin)", "severity": "Critical" },
+    …
+  ],
+  "shellbagFolderNames": "…"
+}
+```
+
+- **tools**: matched on the file name without extension (`procdump64.exe` → `procdump64`); names of 5 or more characters also match as a prefix (`rclone-v1.65`). A tool found in a staging folder is raised one severity level
+- **stagingFolders**, **commandLines**, **shellbagFolderNames**: .NET regular expressions, case-insensitive. Paths are matched with backslashes, as they appear in the EZ Tools output (escape each one as `\\` in JSON)
+- **severity**: `Critical`, `High`, `Medium` or `Suspicious`
+- `//` comments and trailing commas are allowed. A broken file stops the run with a message naming the entry (for example `commandLines #3: invalid pattern`) instead of analysing without rules
+
 ## Detection settings
 
+- **Rules file**: which `rules.json` to use (empty = the one next to the exe), with **Open** and **Reload**
 - **Brute force threshold**: failed logons from one source before it is reported (default 10)
 - **$MFT recency**: only list lower-severity files created within this many days of the newest file (0 = all)
-- **Extra keywords**: names from the ticket or threat intel, flagged HIGH in file names, paths and command lines. Common attacker tools (mimikatz, rclone, PsExec, AnyDesk, SharpHound, …) are built in
+- **Extra keywords**: names from the ticket or threat intel, flagged HIGH in file names, paths and command lines, for this case only. Permanent additions belong in `rules.json`
 - **Whitelisted path fragments**: never flagged, e.g. your EDR or deployment tool
 
 ## Test case and regression test
 
 `tools\New-TestCase.ps1 -CaseFolder C:\Cases\KapeTest` writes synthetic EZ Tools output for three hosts (documentation-range IPs, fictional names). The story: RDP brute force on WS01, mimikatz, a backdoor account, rclone uploading about 2 GB (SRUM), PsExec to FS01, shadow copies deleted and ransom notes, a webshell on FS01, and Kerberoasting and DCSync against DC01.
 
-After a build, `tools\Test-Detections.ps1` builds that case, runs the analyser headless and checks every detection it is built to trigger, and that noise such as OneDrive uploads is not flagged. It exits with code 1 when a check fails. Pass `-Exe` to test a published build.
+After a build, `tools\Test-Detections.ps1` builds that case, runs the analyser headless and checks every detection it is built to trigger, and that noise such as OneDrive uploads is not flagged. It exits with code 1 when a check fails. Pass `-Exe` to test a published build. GitHub Actions runs the build and this test on every push and pull request (`.github/workflows/build.yml`); the badge at the top shows the latest result.
 
 ## Building
 
 ```
 dotnet build
 ```
+
+`rules.json` is copied next to the exe by every build and publish; it is never bundled into the single file.
 
 Release build (single self-contained exe, as in the GitHub releases):
 
@@ -162,14 +191,16 @@ dotnet publish KapeAnalyser.WPF.csproj -c Release -r win-x64 --self-contained tr
 
 ## Adding an analyser
 
-1. Implement `IArtifactAnalyser` in `Analysers\`: `Source` (short tag), `Module` (shown in COVERAGE), `Accepts(fileName)` for the EZ Tools output name, `Analyse(csvPath, ctx)` per file and `Complete(ctx)` for per-host conclusions. Use `ctx.CoverageFor(Source)` so the module shows in COVERAGE, `ctx.Rules` for tool, staging-folder and command-line matching, and `FindingAggregator` to collapse repeated events into one finding with a count
+1. Implement `IArtifactAnalyser` in `Analysers\`: `Source` (short tag), `Module` (shown in COVERAGE), `Accepts(fileName)` for the EZ Tools output name, `Analyse(csvPath, ctx)` per file and `Complete(ctx)` for per-host conclusions. Use `ctx.CoverageFor(Source)` so the module shows in COVERAGE, `ctx.Rules` for tool, staging-folder and command-line matching (the lists live in `rules.json`), and `FindingAggregator` to collapse repeated events into one finding with a count
 2. Add it to `AnalyserRegistry.CreateAll()`
 3. Add a toggle to `AnalyserConfig` and a card to `Views\ModulesView.xaml`
 4. Add rows that trigger it to `tools\New-TestCase.ps1` and checks to `tools\Test-Detections.ps1`
 
 ## Antivirus
 
-The detection rules contain attacker strings (tool names, mimikatz command syntax, AMSI-bypass markers), so Windows Defender may flag `KapeAnalyser.WPF.exe` (or the built `KapeAnalyser.WPF.dll`) as malicious and refuse to run it. As with other DFIR tools (KAPE and EZ Tools are often flagged too), add an antivirus exclusion for the folder you build or run it from, following your organisation's policy.
+The detection rules contain attacker strings (tool names, credential-dumping command syntax, AMSI-bypass markers). Since they moved to `rules.json`, the executable no longer contains them: a build that Windows Defender blocked as `HackTool:Win32/Mimikatz` before the change runs unflagged after it. Releases up to v0.3.0 still have the rules compiled in and may be flagged.
+
+`rules.json` and `tools\New-TestCase.ps1` are text files with the same kind of strings. Defender did not flag `rules.json` in testing. PowerShell's AMSI scans scripts as they run, which is why the test case uses harmless command lines. If your antivirus quarantines a file anyway, add an exclusion for that folder, following your organisation's policy.
 
 ## Acknowledgements
 

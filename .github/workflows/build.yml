@@ -1,0 +1,43 @@
+name: Build and test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build
+        run: dotnet build KapeAnalyser.WPF.csproj -c Release -nologo -o out
+
+      - name: Check rules.json ships next to the exe
+        shell: powershell
+        run: |
+          if (-not (Test-Path out\rules.json)) { throw 'rules.json missing from the build output' }
+
+      - name: Regression test (synthetic case, headless run)
+        shell: powershell
+        run: |
+          .\tools\Test-Detections.ps1 -Exe (Resolve-Path out\KapeAnalyser.WPF.exe).Path -WorkFolder (Join-Path $env:RUNNER_TEMP 'KapeAnalyserRegression')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Keep the run log when the test fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-output
+          path: ${{ runner.temp }}/KapeAnalyserRegression
+          if-no-files-found: ignore

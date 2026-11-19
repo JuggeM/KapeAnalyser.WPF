@@ -29,6 +29,14 @@ public sealed class AnalysisEngine
 
     public void RunAll(CancellationToken ct, IProgress<double>? progress = null)
     {
+        // Rules are read on every run, so edits to rules.json take effect without restarting
+        if (!RuleSet.TryLoad(_config.ResolveRulesPath(), out var rulesMessage))
+        {
+            _log($"[ERROR] Detection rules not loaded: {rulesMessage}");
+            throw new InvalidOperationException("Detection rules not loaded: " + rulesMessage);
+        }
+        _log($"Rules: {rulesMessage}");
+
         var outputBase = _config.ResolveOutputPath();
         Directory.CreateDirectory(outputBase);
         _log($"Output: {outputBase}");

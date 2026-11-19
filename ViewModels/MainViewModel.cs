@@ -80,6 +80,46 @@ public class MainViewModel : ViewModelBase
 
     public CaseReportViewModel Report { get; }
 
+    // ── Detection rules file ─────────────────────────────────────────
+    public string RulesPathText
+    {
+        get => Config.RulesPath;
+        set { Config.RulesPath = (value ?? "").Trim().Trim('"'); OnPropertyChanged(); ReloadRules(); }
+    }
+    private string _rulesStatus = "";
+    public string RulesStatus { get => _rulesStatus; private set => SetField(ref _rulesStatus, value); }
+    private bool _rulesOk = true;
+    public bool RulesOk { get => _rulesOk; private set => SetField(ref _rulesOk, value); }
+    public ICommand ReloadRulesCommand { get; }
+    public ICommand BrowseRulesCommand { get; }
+    public ICommand OpenRulesCommand { get; }
+
+    private void ReloadRules()
+    {
+        var path = Config.ResolveRulesPath();
+        RulesOk = RuleSet.TryLoad(path, out var message);
+        RulesStatus = RulesOk ? $"Loaded {message}" : $"Not loaded — {message}";
+    }
+
+    private void BrowseRules()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Detection rules file", Filter = "Rules (*.json)|*.json|All files (*.*)|*.*",
+            FileName = Path.GetFileName(Config.ResolveRulesPath()),
+            InitialDirectory = Path.GetDirectoryName(Config.ResolveRulesPath()),
+        };
+        if (dlg.ShowDialog() == true) RulesPathText = dlg.FileName;
+    }
+
+    private void OpenRules()
+    {
+        var path = Config.ResolveRulesPath();
+        if (!File.Exists(path)) { RulesOk = false; RulesStatus = $"Not found: {path}"; return; }
+        try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
+        catch { Process.Start(new ProcessStartInfo("notepad.exe", $"\"{path}\"") { UseShellExecute = true }); }
+    }
+
     public MainViewModel()
     {
         Report = new CaseReportViewModel(Config);
@@ -89,6 +129,10 @@ public class MainViewModel : ViewModelBase
             ActivePanel = p as string ?? ActivePanel;
             if (ActivePanel == "Report") Report.EnsureLoaded();
         });
+        ReloadRulesCommand = new RelayCommand(_ => ReloadRules());
+        BrowseRulesCommand = new RelayCommand(_ => BrowseRules());
+        OpenRulesCommand = new RelayCommand(_ => OpenRules());
+        ReloadRules();
         RunCommand = new RelayCommand(_ => _ = RunAsync(), _ => CanRun);
         CancelCommand = new RelayCommand(_ => { _cts?.Cancel(); RunStatusText = "Cancelling…"; }, _ => IsRunning);
         BrowseCommand = new RelayCommand(_ => BrowseCase());

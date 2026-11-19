@@ -127,9 +127,7 @@ public sealed class ShellbagsAnalyser : IArtifactAnalyser
             || f.Equals("Deduplicated.csv", StringComparison.OrdinalIgnoreCase) || f.Contains("SBECmd", StringComparison.OrdinalIgnoreCase))
         && !f.Contains("RECmd", StringComparison.OrdinalIgnoreCase);
 
-    private static readonly Regex Interesting = new(
-        @"\b(mimikatz|rclone|exfil|loot|dump|dumps|hashes|creds|passwords?|sharphound|bloodhound|lazagne|procdump|psexec|cobalt|beacon|tools?|hack|payloads?|ransom|staging)\b|\\\\[^\\]+\\(ADMIN|[A-Z])\$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // Suspicious folder names (tool, loot and staging names, admin shares) come from rules.json
 
     private readonly FindingAggregator _agg = new();
 
@@ -149,7 +147,7 @@ public sealed class ShellbagsAnalyser : IArtifactAnalyser
             var t = CsvReader.ParseTime(csv[cTime]);
             cov.See(t);
             var path = csv[cPath];
-            var mm = Interesting.Match(path);
+            var mm = RuleSet.Active.ShellbagFolderNames?.Match(path) ?? Match.Empty;
             var tool = ctx.Rules.MatchTool(path.TrimEnd('\\') + ".exe"); // folder named after a tool
             if (!mm.Success && tool == null) continue;
             var sev = tool != null ? (Severity)Math.Max((int)tool.Severity, (int)Severity.Medium) : Severity.Suspicious;
