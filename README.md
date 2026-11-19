@@ -11,7 +11,7 @@ A Windows desktop application for triaging Windows collections: **DFIR ORC** col
 
 | Source | KAPE module output | What it detects |
 |---|---|---|
-| EVTX | `*_EvtxECmd_Output.csv` | Brute force (4625/4771/4776) and *succeeded* after failures, RDP logons (4624 type 10, 1149, 21/25), network logons from external IPs, type 9 logons, accounts created and added to privileged groups, services (7045/4697), scheduled tasks (4698), process command lines (4688, Sysmon 1), PowerShell (4104, 400/600/800), Defender detections, exclusions and tampering, log clearing (1102/104), Kerberoasting (RC4 4769), admin shares (5140/5145), LSASS access (Sysmon 10), autorun registry writes (Sysmon 13), WMI subscriptions, BITS jobs |
+| EVTX | `*_EvtxECmd_Output.csv` | Brute force (4625/4771/4776) and *succeeded* after failures, RDP logons (4624 type 10, 1149, 21/25), network logons from external IPs, type 9 logons, accounts created and added to privileged groups, services (7045/4697), scheduled tasks (4698), process command lines (4688, Sysmon 1), shells started by a web server, Office, WMI or the print spooler (parent process), PowerShell (4104, 400/600/800), Defender detections, exclusions and tampering, log clearing (1102/104), Kerberoasting (RC4 4769), DES tickets, DCSync (4662), AdminSDHolder / delegation / shadow credential / GPO changes (5136), computer accounts created or given delegation by a user (4741/4742), admin shares (5140/5145), LSASS access (Sysmon 10), autorun registry writes (Sysmon 13), WMI subscriptions, BITS jobs |
 | PREFETCH | `*_PECmd_Output.csv` | Known attacker and dual-use tools, executables run from staging folders |
 | AMCACHE | `*_Amcache_*FileEntries.csv` | Same, with SHA1 |
 | SHIMCACHE | `*AppCompatCache*.csv` | Same (times are file modification times) |
@@ -21,6 +21,7 @@ A Windows desktop application for triaging Windows collections: **DFIR ORC** col
 | USNJRNL | `*_MFTECmd_$J_Output.csv` | Tools created, renamed or deleted; prefetch files created for tools; mass ransom notes |
 | RECYCLEBIN | `*_RBCmd_Output.csv` | Deleted tools and large archives |
 | SHELLBAGS | SBECmd output | Tool and loot folder names, admin shares |
+| SRUM | `*_SrumECmd_NetworkUsages_Output.csv`, `*_AppResourceUseInfo_Output.csv` | Data sent out per app and user: known tools or staged binaries that uploaded data (exfiltration, e.g. rclone), other large uploads; tools that ran. The case report uses it to say whether data was sent out |
 
 Run KAPE with the `!EZParser` compound module (or the individual modules) against the ORC collection.
 
@@ -56,6 +57,8 @@ The **Case report** panel turns every host's `Findings.csv` into a readable Engl
 - Headless: `KapeAnalyser.WPF.exe --case C:\Cases\X [--out <folder>] [--name <case>] [--analyst <name>]`
 
 Test case: `tools\New-TestCase.ps1 -CaseFolder C:\Cases\KapeTest` writes synthetic module output for three hosts (documentation-range IPs, fictional names).
+
+Regression test: after a build, `tools\Test-Detections.ps1` builds that case, runs the analyser headless and checks every detection it is built to trigger (and that noise such as OneDrive uploads is not flagged). It exits with code 1 when a check fails.
 
 ## Antivirus
 

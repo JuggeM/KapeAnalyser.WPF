@@ -227,11 +227,20 @@ public static class CaseSummary
                 if (links.Any(x => (x.From.Equals(owner, StringComparison.OrdinalIgnoreCase) && x.To.Equals(h.Hostname, StringComparison.OrdinalIgnoreCase))
                                 || (x.From.Equals(h.Hostname, StringComparison.OrdinalIgnoreCase) && x.To.Equals(owner, StringComparison.OrdinalIgnoreCase)))) continue;
                 // Otherwise h's findings name owner's address: h reached out to owner (e.g. \\10.10.1.30\share)
-                links.Add(new LateralLink(h.Hostname, owner, new LinkEvidence(ev.Text, ev.TimeUtc, ev.Source)));
+                var evidence = new LinkEvidence(ev.Text, ev.TimeUtc, ev.Source);
+                links.Add(IsInboundFrom(ev.Text + " " + ev.Detail, ip)
+                    ? new LateralLink(owner, h.Hostname, evidence)      // "… from 10.10.1.21": owner came in
+                    : new LateralLink(h.Hostname, owner, evidence));    // "\10.10.1.30\share": h reached out
             }
 
         return links.OrderBy(l => l.TimeUtc ?? DateTime.MaxValue).ThenBy(l => l.From).ToList();
     }
+
+    /// <summary>"… from 10.10.1.21" / "from external IP …": the address is the source of the activity.</summary>
+    public static bool IsInboundFrom(string text, string ip) =>
+        System.Text.RegularExpressions.Regex.IsMatch(text,
+            @"\bfrom\s+(?:external\s+IP\s+)?(?:[\w.-]+\s+\()?" + System.Text.RegularExpressions.Regex.Escape(ip) + @"(?![\d.]*\d)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     public static bool ContainsIp(string text, string ip)
     {

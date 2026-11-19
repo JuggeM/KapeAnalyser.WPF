@@ -21,6 +21,7 @@ public static class AnalyserRegistry
         new MftAnalyser(),
         new UsnJournalAnalyser(),
         new RecycleBinAnalyser(),
+        new SrumAnalyser(),
         new ShellbagsAnalyser(),
     };
 }

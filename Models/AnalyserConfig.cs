@@ -51,6 +51,7 @@ public class AnalyserConfig
     public bool AnalyseUsnJournal { get; set; } = true;
     public bool AnalyseRecycleBin { get; set; } = true;
     public bool AnalyseShellbags { get; set; } = true;
+    public bool AnalyseSrum { get; set; } = true;
 
     // ── Detection ────────────────────────────────────────────────────
     /// <summary>Failed logons from one source before it is flagged as brute force.</summary>

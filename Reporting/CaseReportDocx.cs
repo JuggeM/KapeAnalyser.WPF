@@ -138,7 +138,7 @@ namespace KapeAnalyser.WPF.Reporting
                         lastDay = day;
                     }
                     var ev = new List<Seg> { S(CaseReport.SplitTitle(f.Text).Title) };
-                    if (f.LateralTo != null) { ev.Add(S(" ")); ev.Add(Pill($"Lateral → {f.LateralTo}", Red, RedBg)); }
+                    if (f.LateralTo != null) { ev.Add(S(" ")); ev.Add(Pill(f.LateralText!, Red, RedBg)); }
                     t.Append(Row(widths,
                         new[] { M($"{f.TimeUtc:HH:mm:ss}") }, new[] { M(f.Host) }, ev.ToArray(),
                         new[] { Dim(f.SourceText) }, new[] { Pill(LikelihoodScale.Label(f.Likelihood), Fg(f.Likelihood), Bg(f.Likelihood)) }));

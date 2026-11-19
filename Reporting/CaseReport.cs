@@ -81,6 +81,9 @@ namespace KapeAnalyser.WPF.Reporting
         public IReadOnlyList<string> CaseIocMatches { get; init; } = Array.Empty<string>();
         /// <summary>Case host whose own IP appears in this finding (lateral movement).</summary>
         public string? LateralTo { get; init; }
+        /// <summary>True when the other case host is the source (a logon or share access from it), not the target.</summary>
+        public bool LateralInbound { get; init; }
+        public string? LateralText => LateralTo == null ? null : LateralInbound ? $"Lateral from {LateralTo}" : $"Lateral to {LateralTo}";
         public Likelihood AutoLikelihood { get; init; }
         public bool AutoInclude { get; set; }
         public string Basis { get; init; } = "";
@@ -136,6 +139,8 @@ namespace KapeAnalyser.WPF.Reporting
         /// <summary>Indicators extracted from findings on more than one host.</summary>
         public List<ReportIoc> SharedIocs { get; init; } = new();
         public List<string> AutoGaps { get; init; } = new();
+        /// <summary>Hosts without SRUM output, where data sent out could not be measured.</summary>
+        public List<string> NoSrumHosts { get; init; } = new();
     }
 
     // ── Analyst input, saved next to the processed output ──────────────
@@ -213,10 +218,12 @@ namespace KapeAnalyser.WPF.Reporting
                     var iocMatches = h.IocHits   // Host,Type,Ioc,Comment,Hits,First,Last,Sources,Sample
                         .Where(r => r[2].Length > 0 && raws.Any(raw => raw.Contains(r[2], StringComparison.OrdinalIgnoreCase)))
                         .Select(r => r[2]).Distinct().ToList();
-                    var lateralTo = ipOwner
+                    var lateralIp = ipOwner
                         .Where(kv => !kv.Value.Equals(h.Hostname, StringComparison.OrdinalIgnoreCase)
                                      && raws.Any(raw => CaseSummary.ContainsIp(raw, kv.Key)))
-                        .Select(kv => kv.Value).FirstOrDefault();
+                        .Select(kv => kv.Key).FirstOrDefault();
+                    var lateralTo = lateralIp == null ? null : ipOwner[lateralIp];
+                    bool inbound = lateralIp != null && raws.Any(raw => CaseSummary.IsInboundFrom(raw, lateralIp));
 
                     int score = (3 - best.Rank) + (corroborating.Count > 0 ? 1 : 0) + (iocMatches.Count > 0 ? 1 : 0);
                     var auto = score switch
@@ -232,7 +239,7 @@ namespace KapeAnalyser.WPF.Reporting
                         ? $"corroborated by {string.Join(", ", corroborating)} on the same host (shared {string.Join(", ", shared)})"
                         : "no independent source on this host");
                     if (iocMatches.Count > 0) basis.Add($"matches case IOC list ({string.Join(", ", iocMatches.Take(3))})");
-                    if (lateralTo != null) basis.Add($"references case host {lateralTo}");
+                    if (lateralTo != null) basis.Add(inbound ? $"activity from case host {lateralTo}" : $"reaches case host {lateralTo}");
 
                     var text = best.Text + (best.Count > 1 ? $" (x{best.Count})" : "") + (best.Detail.Length > 0 ? " | " + Flat(best.Detail) : "");
                     findings.Add(new ReportFinding
@@ -250,6 +257,7 @@ namespace KapeAnalyser.WPF.Reporting
                         SharedIndicators = shared,
                         CaseIocMatches = iocMatches,
                         LateralTo = lateralTo,
+                        LateralInbound = inbound,
                         AutoLikelihood = auto,
                         Basis = string.Join("; ", basis),
                         Likelihood = auto,
@@ -302,9 +310,11 @@ namespace KapeAnalyser.WPF.Reporting
 
             // Gaps the data itself shows
             var gaps = new List<string>();
+            var noSrum = new List<string>();
             foreach (var h in hosts)
             {
                 var missing = MissingSources(h.Dir);
+                if (missing.Contains("SRUM")) noSrum.Add(h.Hostname);
                 if (missing.Contains("EVTX"))
                     gaps.Add($"No event log output (EvtxECmd) for {h.Hostname}: logons, services, scheduled tasks and process creation could not be checked.");
                 else if (missing.Count >= 3)
@@ -331,6 +341,7 @@ namespace KapeAnalyser.WPF.Reporting
                 CaseIocsSearched = searched,
                 SharedIocs = sharedIocs,
                 AutoGaps = gaps,
+                NoSrumHosts = noSrum,
             };
         }
 
@@ -522,7 +533,16 @@ namespace KapeAnalyser.WPF.Reporting
             {
                 sb.Append($"{data.SharedIocs.Count} indicator(s) appear on more than one host, so a single actor or campaign is likely. ");
             }
-            sb.Append("Data exfiltration has not been assessed.");
+            // Exfiltration: what SRUM shows, or that it could not be checked
+            var sent = data.Findings.Where(f => f.Include && f.Sources.Contains("SRUM") && f.Text.Contains(" sent ")).ToList();
+            if (sent.Count > 0)
+                sb.Append($"SRUM shows {JoinAnd(sent.Select(f => $"{Regex.Match(f.Text, @"^\S+ sent [\d.]+ [KMG]B").Value} on {f.Host}").Distinct().Take(3).ToList())}, so data exfiltration is likely. ");
+            else if (data.NoSrumHosts.Count == 0)
+                sb.Append("SRUM shows no upload by a known tool or staged binary. ");
+            if (data.NoSrumHosts.Count > 0)
+                sb.Append(data.NoSrumHosts.Count == data.Hosts.Count
+                    ? "Data exfiltration has not been assessed (no SRUM output)."
+                    : $"Data sent out could not be checked on {JoinAnd(data.NoSrumHosts)} (no SRUM output).");
             return sb.ToString().Trim();
         }
 
@@ -702,7 +722,7 @@ namespace KapeAnalyser.WPF.Reporting
                     var day = f.TimeUtc!.Value.ToString("yyyy-MM-dd");
                     if (day != lastDay) { sb.Append($"<tr class=\"day\"><td colspan=\"5\">{day}</td></tr>"); lastDay = day; }
                     sb.Append($"<tr><td class=\"mono nowrap\">{f.TimeUtc:HH:mm:ss}</td><td class=\"mono\">{E(f.Host)}</td><td>{E(SplitTitle(f.Text).Title)}");
-                    if (f.LateralTo != null) sb.Append($" <span class=\"pill l-ac\">Lateral → {E(f.LateralTo)}</span>");
+                    if (f.LateralTo != null) sb.Append($" <span class=\"pill l-ac\">{E(f.LateralText)}</span>");
                     sb.Append($"</td><td class=\"muted\">{E(f.SourceText)}</td><td>{Pill(f.Likelihood)}</td></tr>");
                 }
                 sb.Append("</tbody></table>");
@@ -783,9 +803,9 @@ namespace KapeAnalyser.WPF.Reporting
             sb.Append($"<div class=\"metric\"><p class=\"ml\">{E(label)}</p><p class=\"mv\">{valueHtml}</p></div>");
 
         internal static string Span(TimeSpan t) =>
-            t.TotalDays >= 2 ? $"{t.TotalDays:0} days" :
-            t.TotalHours >= 1 ? $"{t.TotalHours:0.#} h" :
-            $"{Math.Max(1, t.TotalMinutes):0} min";
+            t.TotalDays >= 2 ? FormattableString.Invariant($"{t.TotalDays:0} days") :
+            t.TotalHours >= 1 ? FormattableString.Invariant($"{t.TotalHours:0.#} h") :
+            FormattableString.Invariant($"{Math.Max(1, t.TotalMinutes):0} min");
 
         private const string Css = @"
 :root{--text:#1a1a1a;--muted:#6b6b6b;--faint:#9a9a9a;--border:#e2e2e2;--surface:#f6f6f4;--bg:#fff;

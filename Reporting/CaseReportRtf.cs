@@ -89,7 +89,7 @@ namespace KapeAnalyser.WPF.Reporting
                     {
                         $@"\f1 {f.TimeUtc:HH:mm:ss}",
                         $@"\f1 {E(f.Host)}",
-                        E(CaseReport.SplitTitle(f.Text).Title) + (f.LateralTo != null ? $@" {{\b\cf{Red} Lateral {E("→")} {E(f.LateralTo)}}}" : ""),
+                        E(CaseReport.SplitTitle(f.Text).Title) + (f.LateralTo != null ? $@" {{\b\cf{Red} {E(f.LateralText)}}}" : ""),
                         $@"\cf{Muted} {E(f.SourceText)}",
                         $@"\b\cf{Fg(f.Likelihood)} {E(LikelihoodScale.Label(f.Likelihood))}",
                     });

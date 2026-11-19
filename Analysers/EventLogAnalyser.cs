@@ -21,7 +21,7 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
     private static readonly HashSet<int> Interesting = new()
     {
         // Security
-        1102, 4624, 4625, 4648, 4688, 4697, 4698, 4719, 4720, 4722, 4724, 4726, 4728, 4732, 4756, 4769, 4771, 4776, 4781, 5140, 5145,
+        1102, 4624, 4625, 4648, 4662, 4688, 4697, 4698, 4719, 4720, 4722, 4724, 4726, 4728, 4732, 4741, 4742, 4756, 4769, 4771, 4776, 4781, 5136, 5140, 5145,
         // System
         104, 7045,
         // RDP
@@ -125,6 +125,9 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
                     return;
                 case 4769: Kerberos(e); return;
                 case 5140 or 5145: Share(e, ctx); return;
+                case 4662: DirectoryAccess(e); return;
+                case 5136: DirectoryChange(e); return;
+                case 4741 or 4742: ComputerAccount(e); return;
             }
             return;
         }
@@ -306,10 +309,79 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
         _groupAdds.Clear();
     }
 
+    // ── Domain controller ────────────────────────────────────────────
+    // Replication rights: DS-Replication-Get-Changes(-All / -In-Filtered-Set)
+    private static readonly Regex ReplicationGuids = new(
+        @"1131f6aa-9c07-11d1-f79f-00c04fc2dcd2|1131f6ad-9c07-11d1-f79f-00c04fc2dcd2|89e95b76-444d-4c62-991a-0facbeda640c",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>4662 with replication rights from a user (not a DC computer account) = DCSync.</summary>
+    private void DirectoryAccess(Ev e)
+    {
+        var props = e.D("Properties");
+        if (!ReplicationGuids.IsMatch(props)) return;
+        var who = e.D("SubjectUserName");
+        if (who.EndsWith("$") || who.Length == 0) return;
+        _agg.Add($"dcsync|{who}", Severity.Critical, e.Time, Source, "DCSync (directory replication by a user)",
+            $"DCSync: {Acct(e.D("SubjectDomainName"), who)} requested directory replication (password hashes) from this DC",
+            Trunc(props, 400), e.Artifact);
+    }
+
+    /// <summary>5136 directory changes that grant persistence or escalation.</summary>
+    private void DirectoryChange(Ev e)
+    {
+        var dn = e.D("ObjectDN");
+        var attr = e.D("AttributeLDAPDisplayName");
+        var who = e.D("SubjectUserName");
+        if (who.EndsWith("$")) return;
+        var value = Trunc(e.D("AttributeValue"), 300);
+        (Severity Sev, string Category, string Text)? hit =
+            dn.Contains("CN=AdminSDHolder", StringComparison.OrdinalIgnoreCase)
+                ? (Severity.Critical, "AdminSDHolder modified", $"AdminSDHolder changed ({attr}) by {who} — persists rights on every admin account")
+            : attr.Equals("msDS-AllowedToActOnBehalfOfOtherIdentity", StringComparison.OrdinalIgnoreCase)
+                ? (Severity.High, "Resource-based delegation set", $"Resource-based constrained delegation set on {CnOf(dn)} by {who}")
+            : attr.Equals("msDS-KeyCredentialLink", StringComparison.OrdinalIgnoreCase)
+                ? (Severity.High, "Shadow credentials", $"msDS-KeyCredentialLink written on {CnOf(dn)} by {who} (shadow credentials)")
+            : attr.Equals("servicePrincipalName", StringComparison.OrdinalIgnoreCase) && e.D("ObjectClass").Equals("user", StringComparison.OrdinalIgnoreCase)
+                ? (Severity.Medium, "SPN added to user", $"SPN set on user {CnOf(dn)} by {who} (targeted Kerberoasting?)")
+            : dn.Contains("CN=Policies,CN=System", StringComparison.OrdinalIgnoreCase) && attr is "gPCFileSysPath" or "gPCMachineExtensionNames" or "gPCUserExtensionNames" or "versionNumber"
+                ? (Severity.Medium, "Group Policy changed", $"Group Policy {CnOf(dn)} changed ({attr}) by {who}")
+            : null;
+        if (hit == null) return;
+        _agg.Add($"5136|{hit.Value.Category}|{dn}|{who}", hit.Value.Sev, e.Time, Source, hit.Value.Category, hit.Value.Text,
+            value.Length > 0 ? $"{attr} = {value}" : dn, e.Artifact);
+    }
+
+    /// <summary>4741/4742 by a user: machine account quota abuse, delegation set on a computer.</summary>
+    private void ComputerAccount(Ev e)
+    {
+        var who = e.D("SubjectUserName");
+        if (who.EndsWith("$") || who.Length == 0) return;
+        var computer = e.D("TargetUserName");
+        if (e.Id == 4741)
+        {
+            Add(e, Severity.Medium, "Computer account created by user",
+                $"Computer account {computer} created by {who} (machine account quota — used for RBCD / noPac)");
+            return;
+        }
+        var deleg = e.D("AllowedToDelegateTo");
+        var uac = e.D("UserAccountControl");
+        if (deleg.Length > 0 && deleg != "-")
+            Add(e, Severity.High, "Delegation set on computer", $"Constrained delegation set on {computer} by {who}", deleg);
+        else if (uac.Contains("%%2087") || uac.Contains("Trusted For Delegation", StringComparison.OrdinalIgnoreCase))
+            Add(e, Severity.High, "Delegation set on computer", $"Unconstrained delegation enabled on {computer} by {who}", uac);
+    }
+
     private void Kerberos(Ev e)
     {
         var enc = e.D("TicketEncryptionType");
         var svc = e.D("ServiceName");
+        if (enc is "0x1" or "0x3" && !svc.EndsWith("$"))
+        {
+            _agg.Add($"des|{e.D("TargetUserName")}|{svc}", Severity.Medium, e.Time, Source, "DES Kerberos ticket",
+                $"DES-encrypted service ticket for {svc} requested by {e.D("TargetUserName")} (weak encryption, crackable)", artifact: e.Artifact);
+            return;
+        }
         if (enc is not ("0x17" or "0x18") || svc.EndsWith("$") || svc.Equals("krbtgt", StringComparison.OrdinalIgnoreCase)) return;
         var who = e.D("TargetUserName");
         _rc4Tickets.TryGetValue(who, out var r);
@@ -338,25 +410,65 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
     {
         var hits = ctx.Rules.MatchCommandLine(cmd);
         var tool = ctx.Rules.ScoreBinaryPath(image);
+        var p = DetectionRules.FileNameOf(parent).ToLowerInvariant();
+        var c = DetectionRules.FileNameOf(image).ToLowerInvariant();
+        var lineage = ParentRule(p, c, cmd);
+
         if (hits.Count == 0 && tool == null)
         {
-            // Office / browser spawning a shell is worth a look even without a known pattern
-            var p = DetectionRules.FileNameOf(parent).ToLowerInvariant();
-            var c = DetectionRules.FileNameOf(image).ToLowerInvariant();
-            if (p is "winword.exe" or "excel.exe" or "powerpnt.exe" or "outlook.exe" or "w3wp.exe" or "sqlservr.exe" or "httpd.exe" or "tomcat.exe" or "java.exe" or "php-cgi.exe"
-                && c is "cmd.exe" or "powershell.exe" or "pwsh.exe" or "wscript.exe" or "cscript.exe" or "mshta.exe" or "rundll32.exe" or "regsvr32.exe" or "certutil.exe" or "bitsadmin.exe")
-            {
-                _agg.Add($"proc|{p}|{c}|{cmd}", p is "w3wp.exe" or "sqlservr.exe" or "httpd.exe" or "tomcat.exe" or "java.exe" or "php-cgi.exe" ? Severity.High : Severity.Medium,
-                    e.Time, Source, "Suspicious parent process",
-                    $"{p} started {c} (user {user})", Trunc(cmd, 1000), e.Artifact);
-            }
+            // A web server, Office or WMI starting a shell is worth a look without any other pattern
+            if (lineage != null)
+                _agg.Add($"proc|{p}|{c}|{cmd}", lineage.Value.Sev, e.Time, Source, lineage.Value.Category,
+                    $"{lineage.Value.Category}: {p} started {c} (user {user}, {via})", Trunc(FirstNonEmpty(cmd, image), 1000), e.Artifact);
             return;
         }
 
         var sev = hits.Select(h => h.Severity).Append(tool?.Sev ?? Severity.Suspicious).Min();
         var label = hits.Count > 0 ? string.Join(", ", hits.Select(h => h.Label).Distinct()) : tool!.Value.Reason;
+        if (lineage != null)
+        {
+            // The parent makes a known pattern worse: whoami from w3wp is a webshell, not an admin
+            if (lineage.Value.Sev < sev) sev = lineage.Value.Sev;
+            label += $" ({lineage.Value.Category.ToLowerInvariant()}: {p})";
+        }
         _agg.Add($"proc|{label}|{cmd}|{image}", sev, e.Time, Source, hits.Count > 0 ? hits[0].Label : tool!.Value.Reason,
             $"{label}: {DetectionRules.FileNameOf(image)} by {user} ({via})", Trunc(FirstNonEmpty(cmd, image), 1000), e.Artifact);
+    }
+
+    private static readonly Regex WebshellCommand = new(
+        @"\b(whoami|net1?\s+(user|group|localgroup)|ipconfig|systeminfo|nltest|quser|query\s+user|tasklist|hostname|certutil|bitsadmin|powershell|curl|wget|Invoke-WebRequest|echo\s+.+>\s*\S+\.(jsp|aspx?|php))\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly HashSet<string> WebServers = new(StringComparer.OrdinalIgnoreCase)
+        { "w3wp.exe", "httpd.exe", "nginx.exe", "php-cgi.exe", "php.exe", "tomcat.exe", "tomcat7.exe", "tomcat8.exe", "tomcat9.exe", "tomcat10.exe", "tomcat11.exe", "java.exe", "javaw.exe", "node.exe", "sqlservr.exe" };
+    private static readonly HashSet<string> OfficeApps = new(StringComparer.OrdinalIgnoreCase)
+        { "winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe", "onenote.exe", "msaccess.exe", "mspub.exe", "visio.exe", "acrord32.exe", "acrobat.exe", "hwp.exe" };
+    private static readonly HashSet<string> ShellChildren = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cmd.exe", "powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe",
+        "certutil.exe", "bitsadmin.exe", "whoami.exe", "net.exe", "net1.exe", "nltest.exe", "curl.exe", "schtasks.exe",
+        "wmic.exe", "msbuild.exe", "installutil.exe", "systeminfo.exe", "ipconfig.exe", "tasklist.exe", "quser.exe", "reg.exe",
+    };
+
+    /// <summary>
+    /// Parent → child pairs that mean code execution through something that
+    /// should never start a shell: a webshell (web server), a malicious
+    /// document (Office), remote WMI execution (wmiprvse), or the print spooler.
+    /// </summary>
+    internal static (Severity Sev, string Category)? ParentRule(string parent, string child, string cmd = "")
+    {
+        if (parent.Length == 0 || !ShellChildren.Contains(child)) return null;
+        // java.exe / node.exe start cmd for build tools too: there, only a recon or download command counts
+        if (parent is "java.exe" or "javaw.exe" or "node.exe" && child is "cmd.exe" or "reg.exe" or "tasklist.exe"
+            && !WebshellCommand.IsMatch(cmd)) return null;
+        if (WebServers.Contains(parent)) return (Severity.Critical, "Web server started a shell");
+        if (OfficeApps.Contains(parent)) return (Severity.High, "Office document started a shell");
+        if (parent is "wmiprvse.exe" && child is "cmd.exe" or "powershell.exe" or "pwsh.exe" or "rundll32.exe" or "mshta.exe")
+            return (Severity.High, "WMI started a shell (remote execution)");
+        if (parent is "spoolsv.exe") return (Severity.Critical, "Print spooler started a shell");
+        if (parent is "wscript.exe" or "cscript.exe" or "mshta.exe" && child is "powershell.exe" or "pwsh.exe" or "cmd.exe" or "rundll32.exe" or "regsvr32.exe")
+            return (Severity.Medium, "Script host started a shell");
+        return null;
     }
 
     private void Service(Ev e, AnalysisContext ctx, string name, string imagePath, string account, string via)

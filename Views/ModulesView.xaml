@@ -116,6 +116,16 @@
                     <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseShellbags}" VerticalAlignment="Center" Margin="0"/>
                 </Grid>
             </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="6,0,0,8" ToolTip="Bytes sent and received per app per hour: tools or staged binaries that uploaded data (exfiltration), large uploads, tools that ran.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="SRUM (network and app usage)" FontWeight="Medium"/>
+                        <TextBlock Text="SrumECmd: *_NetworkUsages_ / *_AppResourceUseInfo_Output.csv" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseSrum}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
         </UniformGrid>
     </StackPanel>
 </UserControl>

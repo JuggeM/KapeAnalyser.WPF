@@ -6,7 +6,8 @@
   Story: an attacker (203.0.113.45) brute-forces RDP on WS01, logs on as jdoe,
   runs mimikatz and rclone, creates a backdoor account, moves to FS01 with
   PsExec (admin share + PSEXESVC), deletes shadow copies and drops ransom
-  notes, and kerberoasts from DC01's point of view. All IPs are from
+  notes, kerberoasts and runs DCSync against DC01, and uploads ~2 GB with
+  rclone (SRUM). FS01 also has a webshell (w3wp.exe starting cmd.exe). All IPs are from
   documentation ranges; all names are fictional.
 
   Layout produced (three different host-folder styles on purpose):
@@ -186,6 +187,26 @@ Write-Csv @(
     [pscustomobject][ordered]@{ SourceName = 'C:\$Recycle.Bin\S-1-5-21-1-2-3-1104\$I1A2B3C.exe'; FileType = '$I'; FileName = 'C:\Users\jdoe\Downloads\advanced_ip_scanner.exe'; FileSize = 20000000; DeletedOn = (T $tIn.AddMinutes(38)) }
 ) (Join-Path $kape "WS01\FileDeletion\${ts}_RBCmd_Output.csv")
 
+# SrumECmd: rclone uploads ~2 GB over two hours; normal apps for contrast
+function Srum($t, $exe, $user, $recv, $sent) {
+    [pscustomobject][ordered]@{ Id = 0; Timestamp = $t.ToString('yyyy-MM-dd HH:mm:ss'); ExeInfo = $exe; ExeInfoDescription = ''; ExeTimestamp = ''
+        SidType = 'LocalUser'; Sid = 'S-1-5-21-1-2-3-1104'; UserName = $user; UserId = 1; AppId = 1; BytesReceived = $recv; BytesSent = $sent
+        InterfaceLuid = '1689399632855040'; InterfaceType = 'IF_TYPE_ETHERNET_CSMACD'; L2ProfileFlags = 0; L2ProfileId = 0; ProfileName = '' }
+}
+$hour = [datetime]'2026-11-01 09:00:00'
+Write-Csv @(
+    Srum $hour '\device\harddiskvolume3\perflogs\rclone.exe' 'CORP\jdoe' 3145728 1288490188
+    Srum $hour.AddHours(1) '\device\harddiskvolume3\perflogs\rclone.exe' 'CORP\jdoe' 1048576 966367641
+    Srum $hour '\device\harddiskvolume3\program files\google\chrome\application\chrome.exe' 'CORP\jdoe' 52428800 2097152
+    Srum $hour '\device\harddiskvolume3\users\jdoe\appdata\local\microsoft\onedrive\onedrive.exe' 'CORP\jdoe' 1048576 734003200
+    Srum $hour 'svchost.exe [wuauserv]' 'SYSTEM' 209715200 1048576
+) (Join-Path $kape "WS01\SRUMDatabase\${ts}_SrumECmd_NetworkUsages_Output.csv")
+Write-Csv @(
+    [pscustomobject][ordered]@{ Id = 0; Timestamp = $hour.ToString('yyyy-MM-dd HH:mm:ss'); ExeInfo = '\device\harddiskvolume3\perflogs\rclone.exe'; ExeInfoDescription = ''; ExeTimestamp = ''
+        SidType = 'LocalUser'; Sid = 'S-1-5-21-1-2-3-1104'; UserName = 'CORP\jdoe'; UserId = 1; AppId = 1; BackgroundBytesRead = 0; BackgroundBytesWritten = 0
+        BackgroundCycleTime = 0; FaceTime = 0; ForegroundBytesRead = 2254857830; ForegroundBytesWritten = 0; ForegroundCycleTime = 912345678 }
+) (Join-Path $kape "WS01\SRUMDatabase\${ts}_SrumECmd_AppResourceUseInfo_Output.csv")
+
 # ── FS01 (ORC-style folder name) ─────────────────────────────────────
 $fsRoot = Join-Path $kape 'ORC_Server_FS01_20261101_120000'
 $fs = 'FS01.corp.local'
@@ -197,6 +218,8 @@ $ev += Ev $tL.AddSeconds(2) 5145 'Security' $SecProv $fs ([ordered]@{ SubjectUse
 $ev += Ev $tL.AddSeconds(4) 7045 'System' 'Service Control Manager' $fs ([ordered]@{ ServiceName = 'PSEXESVC'; ImagePath = '%SystemRoot%\PSEXESVC.exe'; ServiceType = 'user mode service'; StartType = 'demand start'; AccountName = 'LocalSystem' })
 $ev += Ev $tL.AddMinutes(1) 4688 'Security' $SecProv $fs ([ordered]@{ SubjectUserName = 'jdoe'; NewProcessName = 'C:\Windows\System32\vssadmin.exe'; CommandLine = 'vssadmin.exe delete shadows /all /quiet'; ParentProcessName = 'C:\Windows\PSEXESVC.exe' })
 $ev += Ev $tL.AddMinutes(2) 4688 'Security' $SecProv $fs ([ordered]@{ SubjectUserName = 'jdoe'; NewProcessName = 'C:\Windows\System32\bcdedit.exe'; CommandLine = 'bcdedit /set {default} recoveryenabled No'; ParentProcessName = 'C:\Windows\PSEXESVC.exe' })
+# Webshell on FS01's intranet site: IIS worker runs recon commands
+$ev += Ev $d0.AddMinutes(-30) 4688 'Security' $SecProv $fs ([ordered]@{ SubjectUserName = 'FS01$'; NewProcessName = 'C:\Windows\System32\cmd.exe'; CommandLine = 'cmd.exe /c whoami'; ParentProcessName = 'C:\Windows\System32\inetsrv\w3wp.exe' })
 Write-Csv $ev (Join-Path $fsRoot "EventLogs\${ts}_EvtxECmd_Output.csv")
 $mft = @()
 1..25 | ForEach-Object { $mft += Mft ".\Shares\Finance\Dept$_" 'README_RESTORE_FILES.txt' 1200 $tL.AddMinutes(5).AddSeconds($_) }
@@ -212,6 +235,9 @@ $ev += Logon $tIn.AddMinutes(15) $dc 'jdoe' '3' '10.10.1.21' 'WS01'
     $ev += Ev $tIn.AddMinutes(16).AddSeconds($_) 4769 'Security' $SecProv $dc ([ordered]@{ TargetUserName = 'jdoe@CORP.LOCAL'; ServiceName = "svc_app$_"; TicketEncryptionType = '0x17'; IpAddress = '::ffff:10.10.1.21'; Status = '0x0' })
 }
 $ev += Ev $tIn.AddMinutes(18) 4728 'Security' $SecProv $dc ([ordered]@{ MemberName = 'CN=support,CN=Users,DC=corp,DC=local'; MemberSid = 'S-1-5-21-1-2-3-1110'; TargetUserName = 'Domain Admins'; SubjectUserName = 'jdoe' })
+# DCSync from jdoe (replication rights), and a computer account created by a user
+$ev += Ev $tIn.AddMinutes(20) 4662 'Security' $SecProv $dc ([ordered]@{ SubjectUserName = 'jdoe'; SubjectDomainName = 'CORP'; ObjectServer = 'DS'; ObjectType = '%{19195a5b-6da0-11d0-afd3-00c04fd930c9}'; AccessMask = '0x100'; Properties = '%%7688 {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2} {19195a5b-6da0-11d0-afd3-00c04fd930c9}' })
+$ev += Ev $tIn.AddMinutes(21) 4741 'Security' $SecProv $dc ([ordered]@{ TargetUserName = 'EVILPC$'; TargetDomainName = 'CORP'; SubjectUserName = 'jdoe'; SubjectDomainName = 'CORP' })
 Write-Csv $ev (Join-Path $dcRoot "EventLogs\${ts}_EvtxECmd_Output.csv")
 
 # ── Case IOC list ────────────────────────────────────────────────────
