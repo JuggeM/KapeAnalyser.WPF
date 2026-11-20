@@ -56,15 +56,15 @@ Run KAPE with the `!EZParser` compound module (or the individual modules) agains
 
 ## Case folder
 
-The case follows the collection pipeline: DFIR ORC archives are uploaded to `Uploads\`, extracted to `Decompressed\`, and KAPE (`!EZParser`) writes its module output to `Processed\`. KapeAnalyser reads `Processed\` and writes its results to `Processed\Level2\`, so they never mix with the KAPE output.
+The case follows the collection pipeline: DFIR ORC archives are uploaded to `Uploads\` and extracted to `Decompressed\`, one folder per host named after the host the data was collected from. KAPE (`!EZParser`) processes each of those folders and writes its module output to a folder with the same name in `Processed\`. KapeAnalyser reads `Processed\` and writes its results to `Processed\Level2\`, so they never mix with the KAPE output.
 
 ```
 CaseFolder\
 ├── Uploads\                ← ORC archives as received
-├── Decompressed\           ← extracted ORC collections (KAPE's source)
+├── Decompressed\           ← extracted ORC collections, one folder per host (KAPE's source)
+│   └── WS01\…               ← also read directly for PowerShell history and web server logs
 ├── iocs.txt                ← case IOC list (IOCs panel)
-└── Processed\              ← KAPE module output (KAPE --mdest), one folder per host
-    ├── WS01\EventLogs\…, ProgramExecution\…, FileSystem\…, Registry\…, SRUMDatabase\…
+└── Processed\              ← KAPE module output (KAPE --mdest), same folder name as in Decompressed\n    ├── WS01\EventLogs\…, ProgramExecution\…, FileSystem\…, Registry\…, SRUMDatabase\…
     ├── ORC_Server_FS01_20261101_120000\…
     └── Level2\             ← KapeAnalyser results
         ├── CaseSummary.txt     ← hosts ranked, lateral movement, case timeline, IOCs across hosts, top findings per host
