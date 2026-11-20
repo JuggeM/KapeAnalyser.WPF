@@ -233,6 +233,19 @@ public static class CaseSummary
                     : new LateralLink(h.Hostname, owner, evidence));    // "\10.10.1.30\share": h reached out
             }
 
+        // Another case host by name in this host's outbound findings: \\FS01\C$, "RDP from this host to FS01"
+        foreach (var h in hosts)
+            foreach (var o in hosts.Where(o => !ReferenceEquals(o, h) && o.Hostname.Length > 1))
+            {
+                if (links.Any(x => x.From.Equals(h.Hostname, StringComparison.OrdinalIgnoreCase) && x.To.Equals(o.Hostname, StringComparison.OrdinalIgnoreCase))) continue;
+                var name = System.Text.RegularExpressions.Regex.Escape(o.Hostname);
+                var rx = new System.Text.RegularExpressions.Regex(
+                    $@"\\\\{name}(?:\.[\w.-]+)?\\|\bto {name}(?:\.[\w.-]+)?\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                var ev = h.Findings.Where(f => rx.IsMatch(f.Text + " " + f.Detail))
+                                   .OrderBy(f => f.Rank).ThenBy(f => f.TimeUtc ?? DateTime.MaxValue).FirstOrDefault();
+                if (ev != null) links.Add(new LateralLink(h.Hostname, o.Hostname, new LinkEvidence(ev.Text, ev.TimeUtc, ev.Source)));
+            }
+
         return links.OrderBy(l => l.TimeUtc ?? DateTime.MaxValue).ThenBy(l => l.From).ToList();
     }
 

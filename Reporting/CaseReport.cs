@@ -224,6 +224,11 @@ namespace KapeAnalyser.WPF.Reporting
                         .Select(kv => kv.Key).FirstOrDefault();
                     var lateralTo = lateralIp == null ? null : ipOwner[lateralIp];
                     bool inbound = lateralIp != null && raws.Any(raw => CaseSummary.IsInboundFrom(raw, lateralIp));
+                    // Another case host by name: \\FS01\C$, "RDP from this host to FS01" (outbound)
+                    lateralTo ??= hosts.Where(o => !ReferenceEquals(o, h) && o.Hostname.Length > 1)
+                        .Select(o => o.Hostname)
+                        .FirstOrDefault(n => raws.Any(raw => Regex.IsMatch(raw,
+                            $@"\\\\{Regex.Escape(n)}(?:\.[\w.-]+)?\\|\bto {Regex.Escape(n)}(?:\.[\w.-]+)?\b", RegexOptions.IgnoreCase)));
 
                     int score = (3 - best.Rank) + (corroborating.Count > 0 ? 1 : 0) + (iocMatches.Count > 0 ? 1 : 0);
                     var auto = score switch

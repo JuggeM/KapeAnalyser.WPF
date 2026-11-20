@@ -73,12 +73,20 @@ Expect WS01 MEDIUM EVTX 'WMI event filter created: SysUpdate'
 Expect WS01 HIGH EVTX 'Remote process via WMIC'
 Expect WS01 HIGH SIGMA 'Sigma \(Hayabusa\): Windows Defender Exclusion Added'
 ExpectNone WS01 SIGMA 'Logon \(Network\)'
+Expect WS01 MEDIUM REGISTRY 'Outbound RDP from this host to 10\.10\.1\.30 as CORP\\jdoe'
+Expect WS01 MEDIUM REGISTRY 'Network share mapped from this host: \\\\10\.10\.1\.30\\Finance'
+Expect WS01 HIGH REGISTRY 'Admin share opened from this host: \\\\FS01\\C\$'
+Expect WS01 MEDIUM REGISTRY 'USB storage device: SanDisk Ultra USB Device \(serial 4C530001234567\)'
+Expect WS01 MEDIUM EVTX 'Removable disk connected: SanDisk Ultra \(serial 4C530001234567, 59\.6 GB\)'
+Expect WS01 SUSPICIOUS EVTX 'unusual hour for this host: CORP\\support \(Interactive\) at 02:40'
+ExpectNone WS01 EVTX 'unusual hour for this host: CORP\\jdoe'
 $hb = $findings | Where-Object { $_.Host -eq 'WS01' -and $_.Text -match 'Windows Defender Exclusion Added' } | Select-Object -First 1
 Check ($hb -and $hb.TimeUtc -eq '2026-11-01 09:11:00') "Hayabusa +01:00 time converted to UTC (got $($hb.TimeUtc))"
 $sessions = Import-Csv (Join-Path $processed 'WS01\Sessions.csv') -Encoding UTF8
 $rdp = @($sessions | Where-Object { $_.LogonType -eq 'RemoteInteractive' -and $_.SourceIp -eq '203.0.113.45' })
 Check ($rdp.Count -eq 2 -and ($rdp | Where-Object { $_.DurationMinutes -eq '42' -and $_.EndedBy -eq '4634' }) -and ($rdp | Where-Object { $_.EndedBy -eq 'RDP 23 logoff' })) "Sessions.csv: RDP session from 4624/4634 (42 min) and from LocalSessionManager (ended by 23)"
-Check (@($sessions | Where-Object { $_.LogonType -eq 'Interactive' -and $_.EndedBy -eq '4634' }).Count -eq 1) 'Sessions.csv: local console session with logoff'
+Check (@($sessions | Where-Object { $_.Id -eq '0x1A2B' -and $_.LogonType -eq 'Interactive' -and $_.EndedBy -eq '4634' }).Count -eq 1) 'Sessions.csv: local console session with logoff'
+Check (@($sessions | Where-Object { $_.LogonType -eq 'Interactive' -and $_.DurationMinutes -eq '45' }).Count -eq 27) 'Sessions.csv: 27 baseline desk sessions of 45 min'
 
 Write-Host 'FS01 (webshell, PsExec, ransomware prep)'
 Expect FS01 CRITICAL EVTX 'Web server started a shell: w3wp\.exe started cmd\.exe'
@@ -92,6 +100,10 @@ Expect DC01 CRITICAL EVTX 'DCSync: CORP\\jdoe'
 Expect DC01 MEDIUM EVTX 'Computer account EVILPC\$ created by jdoe'
 Expect DC01 HIGH EVTX 'Kerberoasting'
 Expect DC01 HIGH EVTX "support added to group 'Domain Admins'"
+Expect DC01 HIGH EVTX 'Password spray: 12 account\(s\) tried from 10\.10\.1\.21 \(WS01\), 2 attempt\(s\) each'
+Expect DC01 HIGH EVTX '6 accounts locked out'
+Expect DC01 MEDIUM EVTX 'Account locked out: user01 \(caller WS01\)'
+Expect FS01 MEDIUM EVTX 'Possible pass-the-hash: NTLM network logon with key length 0 for CORP\\jdoe from 10\.10\.1\.21 \(WS01\)'
 
 Write-Host 'Case'
 Check ($summary -match "WS01\s+$arrow FS01") 'lateral WS01 -> FS01'

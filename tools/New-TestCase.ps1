@@ -93,6 +93,15 @@ $ev += Logoff $tIn.AddMinutes(42) $ws 'jdoe' '10' '0x3E7A1'
 $ev += Ev $tIn.AddMinutes(30) 24 $LsmChan $LsmProv $ws $null @{ EventXML = [ordered]@{ User = 'CORP\jdoe'; SessionID = '2'; Address = '203.0.113.45' } }
 $ev += Ev $tIn.AddMinutes(30).AddSeconds(40) 25 $LsmChan $LsmProv $ws $null @{ EventXML = [ordered]@{ User = 'CORP\jdoe'; SessionID = '2'; Address = '203.0.113.45' } }
 $ev += Ev $tIn.AddMinutes(42) 23 $LsmChan $LsmProv $ws $null @{ EventXML = [ordered]@{ User = 'CORP\jdoe'; SessionID = '2' } }
+# USB stick connected (Partition/Diagnostic 1006)
+$ev += Ev $tIn.AddMinutes(35) 1006 'Microsoft-Windows-Partition/Diagnostic' 'Microsoft-Windows-Partition' $ws ([ordered]@{ Capacity = '64021856256'; Manufacturer = 'SanDisk'; Model = 'Ultra'; SerialNumber = '4C530001234567'; BusType = '7'; ParentId = 'USB\VID_0781&PID_5581\4C530001234567' })
+# A month of normal desk sessions 08:00-16:59 (baseline), then 'support' logging on at 02:40
+0..26 | ForEach-Object {
+    $t = $d0.Date.AddDays(-27 + $_).AddHours(8 + ($_ % 9)).AddMinutes(10)
+    $ev += Logon $t $ws 'jdoe' '2' '127.0.0.1' 'WS01' ('0x5{0:X3}' -f $_)
+    $ev += Logoff $t.AddMinutes(45) $ws 'jdoe' '2' ('0x5{0:X3}' -f $_)
+}
+$ev += Logon $d0.Date.AddHours(2).AddMinutes(40) $ws 'support' '2' '127.0.0.1' 'WS01' '0x6A01'
 # A local console session for contrast (not external)
 $ev += Logon $d0.AddHours(-12).AddMinutes(1) $ws 'jdoe' '2' '127.0.0.1' 'WS01' '0x1A2B'
 $ev += Logoff $d0.AddHours(-4) $ws 'jdoe' '2' '0x1A2B'
@@ -159,6 +168,11 @@ Write-Csv @(
     Reg 'C:\Users\jdoe\NTUSER.DAT' 'Autoruns' 'Run' 'Software\Microsoft\Windows\CurrentVersion\Run' 'Updater' 'C:\Users\Public\svchost.exe -k netsvc' $tIn.AddMinutes(9)
     Reg 'C:\Windows\System32\config\SOFTWARE' 'Antivirus' 'Defender exclusions' 'Microsoft\Windows Defender\Exclusions\Paths' 'C:\Users\Public' '0' $tIn.AddMinutes(6)
     Reg 'C:\Users\jdoe\NTUSER.DAT' 'Program Execution' 'UserAssist' 'Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist\{CEBFF5CD}\Count' 'C:\Users\jdoe\Downloads\advanced_ip_scanner.exe' 'Run count: 1' $tIn.AddMinutes(10)
+    # Where WS01 connected out to: RDP target, a mapped share, an admin share on FS01, and a USB stick
+    Reg 'C:\Users\jdoe\NTUSER.DAT' 'Lateral Movement' 'RDP Connections' 'Software\Microsoft\Terminal Server Client\Servers\10.10.1.30' 'UsernameHint' 'CORP\jdoe' $tIn.AddMinutes(26)
+    Reg 'C:\Users\jdoe\NTUSER.DAT' 'Network' 'Map Network Drive MRU' 'Software\Microsoft\Windows\CurrentVersion\Explorer\Map Network Drive MRU' 'a' '\\10.10.1.30\Finance' $tIn.AddMinutes(11)
+    Reg 'C:\Users\jdoe\NTUSER.DAT' 'Network' 'MountPoints2' 'Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##FS01#C$' '' '' $tIn.AddMinutes(25)
+    Reg 'C:\Windows\System32\config\SYSTEM' 'Devices' 'USBSTOR' 'ControlSet001\Enum\USBSTOR\Disk&Ven_SanDisk&Prod_Ultra&Rev_1.00\4C530001234567&0' 'FriendlyName' 'SanDisk Ultra USB Device' $tIn.AddMinutes(35)
 ) (Join-Path $kape "WS01\Registry\${ts}_RECmd_Batch_Kroll_Batch_Output.csv")
 
 # LECmd
@@ -248,6 +262,9 @@ $ev = @()
 1..10 | ForEach-Object { $ev += Logon $d0.AddHours(-5).AddMinutes($_) $fs 'svc_backup' '3' '10.10.1.5' 'BACKUP01' }
 $tL = $tIn.AddMinutes(25)
 $ev += Logon $tL $fs 'jdoe' '3' '10.10.1.21' 'WS01'
+# Pass-the-hash shape: NTLM network logon without a session key
+$ev += Ev $tL.AddSeconds(1) 4624 'Security' $SecProv $fs ([ordered]@{ SubjectUserSid = 'S-1-0-0'; TargetUserName = 'jdoe'; TargetDomainName = 'CORP'; TargetLogonId = '0x9F01'
+    LogonType = '3'; LogonProcessName = 'NtLmSsp'; AuthenticationPackageName = 'NTLM'; LmPackageName = 'NTLM V2'; KeyLength = '0'; WorkstationName = 'WS01'; IpAddress = '10.10.1.21'; IpPort = '49712' })
 $ev += Ev $tL.AddSeconds(2) 5145 'Security' $SecProv $fs ([ordered]@{ SubjectUserName = 'jdoe'; SubjectDomainName = 'CORP'; IpAddress = '10.10.1.21'; ShareName = '\\*\ADMIN$'; RelativeTargetName = 'PSEXESVC.exe' })
 $ev += Ev $tL.AddSeconds(4) 7045 'System' 'Service Control Manager' $fs ([ordered]@{ ServiceName = 'PSEXESVC'; ImagePath = '%SystemRoot%\PSEXESVC.exe'; ServiceType = 'user mode service'; StartType = 'demand start'; AccountName = 'LocalSystem' })
 $ev += Ev $tL.AddMinutes(1) 4688 'Security' $SecProv $fs ([ordered]@{ SubjectUserName = 'jdoe'; NewProcessName = 'C:\Windows\System32\vssadmin.exe'; CommandLine = 'vssadmin.exe delete shadows /all /quiet'; ParentProcessName = 'C:\Windows\PSEXESVC.exe' })
@@ -272,6 +289,14 @@ $dcRoot = Join-Path $kape 'DC01\2026-11-02T101010'
 $dc = 'DC01.corp.local'
 $ev = @()
 $ev += Logon $tIn.AddMinutes(15) $dc 'jdoe' '3' '10.10.1.21' 'WS01'
+# Password spray from WS01: 12 accounts, 2 tries each; 6 of them lock out
+1..12 | ForEach-Object {
+    $u = 'user{0:D2}' -f $_
+    foreach ($k in 0, 1) {
+        $ev += Ev $tIn.AddMinutes(14).AddSeconds($_ * 3 + $k) 4625 'Security' $SecProv $dc ([ordered]@{ TargetUserName = $u; TargetDomainName = 'CORP'; Status = '0xc000006d'; LogonType = '3'; WorkstationName = 'WS01'; IpAddress = '10.10.1.21'; IpPort = '0' })
+    }
+    if ($_ -le 6) { $ev += Ev $tIn.AddMinutes(14).AddSeconds($_ * 3 + 2) 4740 'Security' $SecProv $dc ([ordered]@{ TargetUserName = $u; TargetDomainName = 'WS01'; SubjectUserName = 'DC01$' }) }
+}
 1..12 | ForEach-Object {
     $ev += Ev $tIn.AddMinutes(16).AddSeconds($_) 4769 'Security' $SecProv $dc ([ordered]@{ TargetUserName = 'jdoe@CORP.LOCAL'; ServiceName = "svc_app$_"; TicketEncryptionType = '0x17'; IpAddress = '::ffff:10.10.1.21'; Status = '0x0' })
 }

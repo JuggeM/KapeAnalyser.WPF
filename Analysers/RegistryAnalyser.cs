@@ -70,6 +70,9 @@ public sealed class RegistryAnalyser : IArtifactAnalyser
                 continue;
             }
 
+            // Outbound lateral movement and removable media (where this host connected to)
+            if (OutboundOrUsb(key, name, csv[cData], t, user, hive, deleted, ctx)) continue;
+
             // Content checks on any row
             var hits = ctx.Rules.MatchCommandLine(data);
             var scored = DetectionRules.ExtractPaths(data).Append(name)
@@ -101,6 +104,76 @@ public sealed class RegistryAnalyser : IArtifactAnalyser
                     $"{key}\\{name}", hive);
             }
         }
+    }
+
+    // ── Outbound connections and removable media ─────────────────────
+    private static readonly Regex RdpServerKey = new(@"\\Terminal Server Client\\Servers\\(?<t>[^\\]+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex RdpDefaultKey = new(@"\\Terminal Server Client\\Default$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex MapDriveMruKey = new(@"\\Map Network Drive MRU$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex NetworkDriveKey = new(@"(^|\\)Network\\(?<d>[A-Za-z])$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex MountPoints2Key = new(@"\\MountPoints2\\(?<p>##[^\\]+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TypedPathsKey = new(@"\\Explorer\\TypedPaths$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex UsbStorKey = new(@"\\Enum\\USBSTOR\\(?<dev>[^\\]+)\\(?<serial>[^\\]+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex PortableKey = new(@"\\Windows Portable Devices\\Devices\\(?<id>[^\\]+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex AdminShare = new(@"^\\\\[^\\]+\\([A-Za-z]\$|ADMIN\$|IPC\$)(\\|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex UncRoot = new(@"^\\\\[^\\]+\\[^\\]+", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Outbound RDP targets, mapped drives and network shares this host's users
+    /// opened (lateral movement *from* this host), and USB storage that was
+    /// connected (exfiltration). True when the row was handled.
+    /// </summary>
+    private bool OutboundOrUsb(string key, string name, string value, DateTime? t, string user, string hive, string deleted, AnalysisContext ctx)
+    {
+        var who = user.Length > 0 ? $" ({user})" : "";
+        Match m;
+
+        if ((m = RdpServerKey.Match(key)).Success || (RdpDefaultKey.IsMatch(key) && Regex.IsMatch(name, @"^MRU\d+$", RegexOptions.IgnoreCase)))
+        {
+            var target = m.Success ? m.Groups["t"].Value : value.Trim();
+            if (target.Length == 0) return true;
+            var hint = m.Success && name.Equals("UsernameHint", StringComparison.OrdinalIgnoreCase) && value.Length > 0 ? $" as {value}" : "";
+            var sev = DetectionRules.IsExternalIp(target.Split(':')[0]) ? Severity.High : Severity.Medium;
+            _agg.Add($"rdpout|{target.ToLowerInvariant()}|{user}", sev, t, Source, "Outbound RDP connection",
+                $"Outbound RDP from this host to {target}{hint}{who}{deleted}", $"{key}\\{name}", hive, extra: hint.Length > 0 ? hint.Trim() : null);
+            return true;
+        }
+
+        string? share = null;
+        if (MapDriveMruKey.IsMatch(key) && Regex.IsMatch(name, @"^[a-z]$", RegexOptions.IgnoreCase)) share = value.Trim();
+        else if (NetworkDriveKey.Match(key) is { Success: true } nd && name.Equals("RemotePath", StringComparison.OrdinalIgnoreCase))
+            share = value.Trim() + $" (drive {nd.Groups["d"].Value.ToUpperInvariant()}:)";
+        else if ((m = MountPoints2Key.Match(key)).Success) share = m.Groups["p"].Value.Replace('#', '\\');
+        else if (TypedPathsKey.IsMatch(key) && value.StartsWith(@"\\", StringComparison.Ordinal)) share = value.Trim();
+        if (share != null)
+        {
+            if (share.Length == 0) return true;
+            var unc = UncRoot.Match(share) is { Success: true } u ? u.Value : share;
+            var host = unc.TrimStart('\\').Split('\\')[0];
+            bool admin = AdminShare.IsMatch(unc);
+            var sev = admin ? Severity.High : DetectionRules.IsIp(host) ? Severity.Medium : Severity.Suspicious;
+            _agg.Add($"share|{unc.ToLowerInvariant()}|{user}", sev, t, Source, admin ? "Admin share opened from this host" : "Network share opened from this host",
+                $"{(admin ? "Admin share opened" : "Network share mapped")} from this host: {share}{who}{deleted}", $"{key}\\{name}", hive);
+            return true;
+        }
+
+        if ((m = UsbStorKey.Match(key)).Success)
+        {
+            var serial = m.Groups["serial"].Value.Split('&')[0];
+            var dev = Regex.Replace(m.Groups["dev"].Value, @"^Disk&Ven_|&Rev_.*$", "", RegexOptions.IgnoreCase).Replace("&Prod_", " ", StringComparison.OrdinalIgnoreCase).Replace('_', ' ');
+            var label = name.Equals("FriendlyName", StringComparison.OrdinalIgnoreCase) && value.Length > 0 ? value : dev;
+            _agg.Add($"usb|{serial}", Severity.Medium, t, Source, "USB storage device",
+                $"USB storage device: {label} (serial {serial}){deleted}", $"{m.Groups["dev"].Value}\\{m.Groups["serial"].Value}", hive);
+            return true;
+        }
+        if ((m = PortableKey.Match(key)).Success)
+        {
+            if (!name.Equals("FriendlyName", StringComparison.OrdinalIgnoreCase) || value.Length == 0) return true;
+            _agg.Add($"wpd|{m.Groups["id"].Value}", Severity.Suspicious, t, Source, "Portable device",
+                $"Portable / removable device: {value}{deleted}", m.Groups["id"].Value, hive);
+            return true;
+        }
+        return false;
     }
 
     private static string UserOfHive(string hivePath)

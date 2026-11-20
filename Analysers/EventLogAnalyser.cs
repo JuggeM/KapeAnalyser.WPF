@@ -21,7 +21,7 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
     private static readonly HashSet<int> Interesting = new()
     {
         // Security
-        1102, 4624, 4625, 4634, 4647, 4648, 4662, 4688, 4697, 4698, 4719, 4720, 4722, 4724, 4726, 4728, 4732, 4741, 4742, 4756, 4769, 4771, 4776, 4781, 5136, 5140, 5145,
+        1102, 4624, 4625, 4634, 4647, 4648, 4740, 4662, 4688, 4697, 4698, 4719, 4720, 4722, 4724, 4726, 4728, 4732, 4741, 4742, 4756, 4769, 4771, 4776, 4781, 5136, 5140, 5145,
         // System
         104, 7045,
         // RDP
@@ -44,6 +44,7 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
     };
 
     private readonly FindingAggregator _agg = new();
+    private readonly List<(string User, string Caller, DateTime? Time)> _lockouts = new();
     private readonly Dictionary<string, (int Count, DateTime? First, DateTime? Last, HashSet<string> Users)> _failures = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(string Src, string User, DateTime? Time, string Type)> _successes = new();
     private readonly Dictionary<string, (HashSet<string> Services, DateTime? First, DateTime? Last)> _rc4Tickets = new(StringComparer.OrdinalIgnoreCase);
@@ -125,6 +126,9 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
                         $"Security event log cleared by {FirstNonEmpty(e.D("SubjectUserName"), "unknown user")}");
                     return;
                 case 4769: Kerberos(e); return;
+                case 4740:
+                    _lockouts.Add((e.D("TargetUserName"), FirstNonEmpty(e.D("TargetDomainName"), e.D("CallerComputerName")), e.Time));
+                    return;
                 case 5140 or 5145: Share(e, ctx); return;
                 case 4662: DirectoryAccess(e); return;
                 case 5136: DirectoryChange(e); return;
@@ -162,6 +166,20 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
         {
             if (e.Id == 4104) ScriptBlock(e, ctx);
             else if (e.Id is 400 or 600 or 800) HostApplication(e, ctx);
+            return;
+        }
+
+        if (e.Is("Partition") && e.Id == 1006)
+        {
+            // Storage device connected (Partition/Diagnostic, on by default since Windows 10): capacity 0 = removed
+            if (!long.TryParse(e.D("Capacity"), out var cap) || cap <= 0) return;
+            var bus = e.D("BusType");
+            if (bus.Length > 0 && bus != "7" && !bus.Contains("USB", StringComparison.OrdinalIgnoreCase)) return;   // 7 = USB
+            var model = string.Join(" ", new[] { e.D("Manufacturer"), e.D("Model") }.Where(x => x.Length > 0 && x != "-")).Trim();
+            var serial = e.D("SerialNumber");
+            _agg.Add($"usb1006|{serial}|{model}", Severity.Medium, e.Time, Source, "Removable disk connected",
+                $"Removable disk connected: {FirstNonEmpty(model, "unknown device")} (serial {FirstNonEmpty(serial, "?")}, {SrumAnalyser.Size(cap)})",
+                e.D("ParentId"), e.Artifact);
             return;
         }
 
@@ -266,6 +284,16 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
                 _agg.Add($"net-ext|{acct}|{ip}", Severity.High, e.Time, Source, "Network logon from external IP",
                     $"Network logon (type 3) for {acct} from external IP {ip}" + (ws.Length > 0 && ws != "-" ? $" ({ws})" : ""), artifact: e.Artifact);
                 break;
+            case "3" when e.D("AuthenticationPackageName").Contains("NTLM", StringComparison.OrdinalIgnoreCase) && e.D("KeyLength") == "0":
+                // Pass-the-hash leaves an NTLM network logon without a session key
+                _agg.Add($"pth|{acct}|{SourceKey(ip, ws)}", external ? Severity.High : Severity.Medium, e.Time, Source, "Possible pass-the-hash",
+                    $"Possible pass-the-hash: NTLM network logon with key length 0 for {acct} from {FirstNonEmpty(SourceKey(ip, ws), "unknown source")}",
+                    $"LogonProcess {e.D("LogonProcessName")}, package {e.D("AuthenticationPackageName")} {e.D("LmPackageName")}".Trim(), e.Artifact);
+                break;
+            case "3" when e.D("LmPackageName").Equals("NTLM V1", StringComparison.OrdinalIgnoreCase):
+                _agg.Add($"ntlmv1|{acct}|{SourceKey(ip, ws)}", Severity.Medium, e.Time, Source, "NTLMv1 logon",
+                    $"NTLMv1 network logon for {acct} from {FirstNonEmpty(SourceKey(ip, ws), "unknown source")} (weak: relay and offline cracking)", artifact: e.Artifact);
+                break;
             case "9" when e.D("LogonProcessName").StartsWith("seclogo", StringComparison.OrdinalIgnoreCase):
                 _agg.Add($"type9|{acct}|{e.D("SubjectUserName")}", Severity.Medium, e.Time, Source, "Logon with new credentials (type 9)",
                     $"Logon type 9 (runas /netonly or pass-the-hash) as {acct} by {e.D("SubjectUserName")}, process {DetectionRules.FileNameOf(e.D("ProcessName"))}",
@@ -364,7 +392,34 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
                 Detail = $"{s.Via}, {s.Id}", Artifact = s.Via == "4624" ? "Security.evtx" : "LocalSessionManager.evtx",
             });
         }
+        UnusualHours(ctx);
         _sessions.Clear(); _openById.Clear(); _openRdp.Clear();
+    }
+
+    /// <summary>
+    /// Desktop sessions (interactive, RDP) that start in an hour of the day when
+    /// this host almost never has one. Needs a baseline of at least 20 sessions.
+    /// </summary>
+    private void UnusualHours(AnalysisContext ctx)
+    {
+        var desk = _sessions.Where(s => s.Start.HasValue && s.LogonType is "Interactive" or "RemoteInteractive" or "CachedInteractive" && s.Via == "4624").ToList();
+        if (desk.Count < 20) return;
+        var perHour = desk.GroupBy(s => s.Start!.Value.Hour).ToDictionary(g => g.Key, g => g.Count());
+        foreach (var g in desk.Where(s => perHour[s.Start!.Value.Hour] <= Math.Max(1, desk.Count * 3 / 100))
+                              .GroupBy(s => (s.User, s.Start!.Value.Hour)))
+        {
+            var first = g.OrderBy(s => s.Start).First();
+            int n = perHour[g.Key.Hour];
+            ctx.Add(new Finding
+            {
+                Severity = DetectionRules.IsExternalIp(first.SourceIp) ? Severity.Medium : Severity.Suspicious,
+                TimeUtc = first.Start, LastUtc = g.Max(s => s.Start), Count = g.Count(), Source = Source,
+                Category = "Logon at unusual hour",
+                Text = $"Logon at an unusual hour for this host: {g.Key.User} ({first.LogonType}) at {first.Start:HH:mm} UTC — " +
+                       $"only {n} of {desk.Count} desktop sessions start between {g.Key.Hour:00}:00 and {(g.Key.Hour + 1) % 24:00}:00",
+                Artifact = "Security.evtx",
+            });
+        }
     }
 
     internal static string Dur(TimeSpan d) =>
@@ -787,6 +842,19 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
         int threshold = Math.Max(1, ctx.Config.BruteForceThreshold);
         foreach (var (src, f) in _failures)
         {
+            // Password spray: many accounts, few tries each (also below the brute force threshold)
+            if (f.Users.Count >= 8 && f.Count <= f.Users.Count * 3)
+            {
+                var sprayIp = src.Split(' ')[0];
+                ctx.Add(new Finding
+                {
+                    Severity = Severity.High, TimeUtc = f.First, LastUtc = f.Last, Count = f.Count, Source = Source, Category = "Password spray",
+                    Text = $"Password spray: {f.Users.Count} account(s) tried from {(DetectionRules.IsExternalIp(sprayIp) ? "external " : "")}{src}, " +
+                           FormattableString.Invariant($"{(double)f.Count / f.Users.Count:0.#} attempt(s) each"),
+                    Detail = string.Join(", ", f.Users.Take(20)) + (f.Users.Count > 20 ? $" (+{f.Users.Count - 20} more)" : ""),
+                    Artifact = "Security.evtx",
+                });
+            }
             if (f.Count < threshold) continue;
             var users = string.Join(", ", f.Users.Take(8)) + (f.Users.Count > 8 ? $" (+{f.Users.Count - 8} more)" : "");
             var ip = src.Split(' ')[0];
@@ -813,6 +881,20 @@ public sealed class EventLogAnalyser : IArtifactAnalyser
                 });
             }
         }
+
+        // Account lockouts: one finding per account, and a case-level one when many accounts lock
+        foreach (var g in _lockouts.GroupBy(l => l.User, StringComparer.OrdinalIgnoreCase))
+            _agg.Add($"4740|{g.Key}", Severity.Medium, g.Min(l => l.Time), Source, "Account locked out",
+                $"Account locked out: {g.Key} (caller {string.Join(", ", g.Select(l => l.Caller).Where(c => c.Length > 0).Distinct())})", artifact: "Security.evtx");
+        var locked = _lockouts.Select(l => l.User).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (locked.Count >= 5)
+            ctx.Add(new Finding
+            {
+                Severity = Severity.High, TimeUtc = _lockouts.Min(l => l.Time), LastUtc = _lockouts.Max(l => l.Time), Count = _lockouts.Count,
+                Source = Source, Category = "Many accounts locked out",
+                Text = $"{locked.Count} accounts locked out (password guessing?), callers: {string.Join(", ", _lockouts.Select(l => l.Caller).Where(c => c.Length > 0).Distinct().Take(5))}",
+                Detail = string.Join(", ", locked.Take(30)), Artifact = "Security.evtx",
+            });
 
         foreach (var (who, r) in _rc4Tickets)
         {
