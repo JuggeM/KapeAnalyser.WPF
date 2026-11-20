@@ -152,6 +152,30 @@ public sealed class UsnJournalAnalyser : IArtifactAnalyser
     private readonly FindingAggregator _agg = new();
     private readonly Dictionary<string, (int Count, DateTime? First, DateTime? Last)> _notes = new(StringComparer.OrdinalIgnoreCase);
 
+    // ── Encryption signs: many files renamed to one new extension, and bursts of changes ──
+    private sealed class RenameExt
+    {
+        public int Count, DoubleExt;
+        public DateTime? First, Last;
+        public HashSet<string> Folders = new(StringComparer.OrdinalIgnoreCase);
+        public List<string> Samples = new();
+    }
+    private readonly Dictionary<string, RenameExt> _renames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<DateTime, int> _changesPerMinute = new();
+    private const int MassRename = 100, MassRenameFolders = 3, MassDoubleExt = 50, MassChangesPerMinute = 1000;
+
+    // Extensions that legitimately appear on many renames (temp files, logs, updates, browsers)
+    private static readonly HashSet<string> CommonRenameExt = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".tmp", ".temp", ".log", ".old", ".bak", ".partial", ".crdownload", ".part", ".download", ".etl", ".dat", ".db", ".ldb",
+        ".lock", ".jfm", ".chk", ".pf", ".evtx", ".xml", ".json", ".txt", ".ini", ".cab", ".msi", ".dll", ".exe", ".mui",
+        ".cat", ".manifest", ".sqlite", ".sqlite-journal", ".jrs", ".edb", ".regtrans-ms", ".blf", ".cache", ".lnk", ".url",
+    };
+    // A document-type extension right before the last one: report.docx.locked
+    private static readonly Regex DoubleExt = new(
+        @"\.(docx?|xlsx?|pptx?|pdf|txt|csv|rtf|odt|ods|jpe?g|png|gif|bmp|zip|rar|7z|sql|mdb|accdb|bak|vmdk|vhdx?|pst|ost|msg|eml|psd|dwg)\.[^.\\]{2,}$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public void Analyse(string csvPath, AnalysisContext ctx)
     {
         using var csv = new CsvReader(csvPath);
@@ -171,6 +195,13 @@ public sealed class UsnJournalAnalyser : IArtifactAnalyser
             bool create = reasons.Contains("FileCreate", StringComparison.OrdinalIgnoreCase);
             bool delete = reasons.Contains("FileDelete", StringComparison.OrdinalIgnoreCase);
             bool renameNew = reasons.Contains("RenameNewName", StringComparison.OrdinalIgnoreCase);
+            bool overwrite = reasons.Contains("DataOverwrite", StringComparison.OrdinalIgnoreCase);
+            if ((renameNew || overwrite) && t.HasValue)
+            {
+                var minute = new DateTime(t.Value.Ticks - t.Value.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+                _changesPerMinute[minute] = _changesPerMinute.GetValueOrDefault(minute) + 1;
+            }
+            if (renameNew) TrackRename(name, csv[cParent], t);
             if (!create && !delete && !renameNew) continue;
 
             if (create && RansomNotes.Name.IsMatch(name))
@@ -200,9 +231,45 @@ public sealed class UsnJournalAnalyser : IArtifactAnalyser
         }
     }
 
+    private void TrackRename(string name, string parent, DateTime? t)
+    {
+        var ext = Path.GetExtension(name);
+        if (ext.Length < 2 || ext.Length > 16 || CommonRenameExt.Contains(ext)) return;
+        if (!_renames.TryGetValue(ext, out var r)) _renames[ext] = r = new RenameExt();
+        r.Count++;
+        if (DoubleExt.IsMatch(name)) r.DoubleExt++;
+        if (t.HasValue) { if (r.First == null || t < r.First) r.First = t; if (r.Last == null || t > r.Last) r.Last = t; }
+        if (r.Folders.Count < 1000 && parent.Length > 0) r.Folders.Add(parent);
+        if (r.Samples.Count < 3) r.Samples.Add(parent.Length > 0 ? parent.TrimEnd('\\') + "\\" + name : name);
+    }
+
     public void Complete(AnalysisContext ctx)
     {
         ctx.AddRange(_agg.Flush());
+
+        foreach (var (ext, r) in _renames.Where(kv => (kv.Value.Count >= MassRename && kv.Value.Folders.Count >= MassRenameFolders) || kv.Value.DoubleExt >= MassDoubleExt)
+                                         .OrderByDescending(kv => kv.Value.Count))
+        {
+            var span = r.First.HasValue && r.Last.HasValue ? $" in {EventLogAnalyser.Dur(r.Last.Value - r.First.Value)}" : "";
+            ctx.Add(new Finding
+            {
+                Severity = Severity.Critical, TimeUtc = r.First, LastUtc = r.Last, Count = r.Count, Source = Source,
+                Category = "Mass rename (possible encryption)",
+                Text = $"Mass rename to '{ext}': {r.Count} file(s) in {r.Folders.Count} folder(s){span}" +
+                       (r.DoubleExt > 0 ? $", {r.DoubleExt} keep their old extension (e.g. .xlsx{ext}) — possible ransomware encryption" : " — possible ransomware encryption"),
+                Detail = string.Join(" ; ", r.Samples), Artifact = "$J",
+            });
+        }
+
+        foreach (var (minute, n) in _changesPerMinute.Where(kv => kv.Value >= MassChangesPerMinute).OrderBy(kv => kv.Key).Take(10))
+            ctx.Add(new Finding
+            {
+                Severity = Severity.High, TimeUtc = minute, Count = n, Source = Source, Category = "Mass file changes",
+                Text = $"Mass file changes: {n} files overwritten or renamed between {minute:HH:mm} and {minute.AddMinutes(1):HH:mm} UTC",
+                Artifact = "$J",
+            });
+        _renames.Clear(); _changesPerMinute.Clear();
+
         foreach (var (name, n) in _notes.Where(kv => kv.Value.Count >= RansomNotes.MinFolders))
             ctx.Add(new Finding
             {

@@ -148,3 +148,16 @@ public interface IArtifactAnalyser
     void Analyse(string csvPath, AnalysisContext ctx);
     void Complete(AnalysisContext ctx);
 }
+
+/// <summary>
+/// An analyser that reads raw files collected from the host (PowerShell
+/// history, web server logs) instead of EZ Tools CSVs. The engine lists the
+/// host's KAPE output folder and its matching extracted collection in
+/// Decompressed\ once, and hands every file this analyser accepts to
+/// <see cref="IArtifactAnalyser.Analyse"/>. <see cref="IArtifactAnalyser.Accepts"/> is false for every CSV.
+/// </summary>
+public interface IRawFileAnalyser : IArtifactAnalyser
+{
+    /// <summary>True when this analyser reads the given file (full path, so parent folders can be checked).</summary>
+    bool AcceptsRaw(string path);
+}

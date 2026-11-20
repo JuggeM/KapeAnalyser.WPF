@@ -136,6 +136,36 @@
                     <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseSigma}" VerticalAlignment="Center" Margin="0"/>
                 </Grid>
             </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="6,0,0,8" ToolTip="Visits to file sharing, paste, tunnel and remote-access sites and to raw IP addresses; downloads of known tools, into staging folders, or of executables from those sites (suspiciousDomains in rules.json).">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Browser history and downloads" FontWeight="Medium"/>
+                        <TextBlock Text="SQLECmd: *_ChromiumBrowser_* / *_Firefox_* CSV" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseBrowser}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="0,0,6,8" ToolTip="Commands typed in PowerShell (PSReadLine), per user: command-line rules, known tools and staging folders. Raw file from the KAPE output or the extracted collection in Decompressed; no timestamps.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="PowerShell history" FontWeight="Medium"/>
+                        <TextBlock Text="Raw: PSReadLine\ConsoleHost_history.txt" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalysePowerShellHistory}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource ParserCard}" Margin="6,0,0,8" ToolTip="IIS (W3C) and Tomcat access logs: webshells, scripts uploaded with PUT, Tomcat manager deploys, injection attempts, scanners and web login brute force (web* patterns in rules.json). Raw files from the KAPE output or Decompressed.">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Web server logs (IIS / Tomcat)" FontWeight="Medium"/>
+                        <TextBlock Text="Raw: u_ex*.log, localhost_access_log*.txt" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Config.AnalyseWebLogs}" VerticalAlignment="Center" Margin="0"/>
+                </Grid>
+            </Border>
         </UniformGrid>
     </StackPanel>
 </UserControl>

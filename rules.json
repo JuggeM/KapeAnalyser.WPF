@@ -2,7 +2,8 @@
   "_comment": [
     "KapeAnalyser detection rules. Loaded at start of each run from rules.json next to KapeAnalyser.WPF.exe.",
     "Edit freely: comments (// ...) and trailing commas are allowed. Patterns are .NET regular expressions, matched case-insensitively.",
-    "severity: Critical, High, Medium or Suspicious. Analyst keywords and whitelisted paths are set in the Detection panel instead."
+    "severity: Critical, High, Medium or Suspicious. Analyst keywords and whitelisted paths are set in the Detection panel instead.",
+    "web*: IIS and Tomcat access log rules (webAttacks first match wins; webCommandParam needs a (?<cmd>...) group). suspiciousDomains: browser history and downloads, matched on the host name."
   ],
   "version": 1,
   "tools": [
@@ -952,7 +953,126 @@
       "pattern": "\\bmofcomp(\\.exe)?\\s+\\S+",
       "label": "MOF file compiled (mofcomp)",
       "severity": "Medium"
+    },
+    {
+      "pattern": "\\bClear-History\\b|Remove-Item\\b.*ConsoleHost_history|Set-PSReadLineOption\\b.*-HistorySaveStyle\\s+SaveNothing",
+      "label": "PowerShell history cleared or disabled",
+      "severity": "High"
     }
   ],
-  "shellbagFolderNames": "\\b(mimikatz|rclone|exfil|loot|dump|dumps|hashes|creds|passwords?|sharphound|bloodhound|lazagne|procdump|psexec|cobalt|beacon|tools?|hack|payloads?|ransom|staging)\\b|\\\\\\\\[^\\\\]+\\\\(ADMIN|[A-Z])\\$"
+  "shellbagFolderNames": "\\b(mimikatz|rclone|exfil|loot|dump|dumps|hashes|creds|passwords?|sharphound|bloodhound|lazagne|procdump|psexec|cobalt|beacon|tools?|hack|payloads?|ransom|staging)\\b|\\\\\\\\[^\\\\]+\\\\(ADMIN|[A-Z])\\$",
+  "webAttacks": [
+    {
+      "label": "SQL injection",
+      "pattern": "union(?:\\s|/\\*.*?\\*/)+(?:all(?:\\s|/\\*.*?\\*/)+)?select\\b|\\b(?:and|or)\\s+\\d+\\s*=\\s*\\d+|'\\s*(?:or|and)\\s+'?\\d|'\\s*(?:or|and)\\s+'[^']*'\\s*=\\s*'|\\bsleep\\s*\\(\\s*\\d|\\bbenchmark\\s*\\(|information_schema|\\bwaitfor\\s+delay\\b|\\bextractvalue\\s*\\(|\\bupdatexml\\s*\\(|concat\\s*\\([^)]*0x3a"
+    },
+    {
+      "label": "Path traversal / LFI",
+      "pattern": "\\.\\.[/\\\\]|/etc/(?:passwd|shadow|hosts|group)\\b|/proc/self/|php://(?:filter|input)|\\bfile://|expect://|zip://"
+    },
+    {
+      "label": "Command injection / RCE",
+      "pattern": "(?:[;|`]|&&)\\s*(?:id|whoami|uname|cat|wget|curl|bash|sh|nc|python3?|perl)\\b|\\$\\((?:id|whoami|curl|wget)|\\b(?:eval|system|exec|passthru|shell_exec|base64_decode)\\s*\\(|\\$\\{jndi:"
+    },
+    {
+      "label": "XSS",
+      "pattern": "<\\s*script|javascript:|\\bon(?:error|load|mouseover)\\s*=|<\\s*svg[^>]*on\\w+\\s*="
+    },
+    {
+      "label": "Exchange ProxyShell / ProxyNotShell",
+      "pattern": "/autodiscover/autodiscover\\.json\\?@|/autodiscover\\.json.*(?:powershell|mapi/nspi)|/mapi/nspi/\\?&email=autodiscover"
+    }
+  ],
+  "webSensitiveProbe": "/\\.env\\b|/\\.git/|/\\.svn/|/\\.htpasswd|/\\.htaccess|/\\.aws/|/\\.ssh/|wp-config\\.php|/config\\.php\\.(?:bak|old|save)|\\.(?:sql|bak|old|swp)(?:$|\\?)|/phpmyadmin|/adminer|/server-status|/actuator\\b",
+  "webUploadDirScript": "/(?:wp-content/uploads|uploads?|images?|img|files|media|tmp|temp|cache|assets/upload)/[^?#]*\\.(?:php\\d?|phtml|phar|jsp|jspx|aspx?|cgi|pl)(?:$|[?#])",
+  "webShellNames": "/(?:cmd|shell|c99|r57|wso|b374k|alfa|webshell|backdoor|up|uploader)\\.(?:php\\d?|phtml|jsp|aspx?)(?:$|[?#])",
+  "webCommandParam": "[?&](?:cmd|exec|command|execute|shell|c|run|code)=(?<cmd>[^&#]+)",
+  "webScanners": [
+    {
+      "tool": "sqlmap",
+      "pattern": "sqlmap"
+    },
+    {
+      "tool": "Nikto",
+      "pattern": "nikto"
+    },
+    {
+      "tool": "Nuclei",
+      "pattern": "nuclei"
+    },
+    {
+      "tool": "WPScan",
+      "pattern": "wpscan"
+    },
+    {
+      "tool": "masscan",
+      "pattern": "masscan"
+    },
+    {
+      "tool": "zgrab",
+      "pattern": "zgrab"
+    },
+    {
+      "tool": "Nmap",
+      "pattern": "nmap scripting engine|\\bnmap\\b"
+    },
+    {
+      "tool": "gobuster",
+      "pattern": "gobuster"
+    },
+    {
+      "tool": "dirbuster",
+      "pattern": "dirbuster|dirb\\b"
+    },
+    {
+      "tool": "ffuf",
+      "pattern": "\\bffuf\\b|fuzz faster"
+    },
+    {
+      "tool": "feroxbuster",
+      "pattern": "feroxbuster"
+    },
+    {
+      "tool": "Hydra",
+      "pattern": "hydra"
+    },
+    {
+      "tool": "Acunetix",
+      "pattern": "acunetix|acunetix-product"
+    },
+    {
+      "tool": "Burp",
+      "pattern": "burp"
+    },
+    {
+      "tool": "OpenVAS",
+      "pattern": "openvas"
+    },
+    {
+      "tool": "WhatWeb",
+      "pattern": "whatweb"
+    }
+  ],
+  "suspiciousDomains": [
+    {
+      "label": "File sharing (exfiltration)",
+      "pattern": "(^|\\.)(mega\\.nz|mega\\.io|transfer\\.sh|file\\.io|gofile\\.io|anonfiles\\.com|temp\\.sh|wetransfer\\.com|we\\.tl|sendspace\\.com|filetransfer\\.io|catbox\\.moe|bashupload\\.com|easyupload\\.io)$",
+      "severity": "Medium"
+    },
+    {
+      "label": "Paste site",
+      "pattern": "(^|\\.)(pastebin\\.com|paste\\.ee|hastebin\\.com|ghostbin\\.[a-z]+|rentry\\.co|pastes\\.io|controlc\\.com)$",
+      "severity": "Medium"
+    },
+    {
+      "label": "Tunnel service",
+      "pattern": "(^|\\.)(ngrok\\.io|ngrok-free\\.app|ngrok\\.app|trycloudflare\\.com|serveo\\.net|localhost\\.run|loca\\.lt|pinggy\\.io)$",
+      "severity": "High"
+    },
+    {
+      "label": "Remote access tool site",
+      "pattern": "(^|\\.)(anydesk\\.com|teamviewer\\.com|rustdesk\\.com|screenconnect\\.com|splashtop\\.com|atera\\.com|netsupportsoftware\\.com)$",
+      "severity": "Medium"
+    }
+  ]
 }

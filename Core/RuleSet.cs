@@ -17,6 +17,8 @@ public sealed class RuleSet
     public sealed record ToolRule(string Name, string Category, Severity Severity);
     public sealed record StagingRule(Regex Rx, string Label);
     public sealed record CommandRule(Regex Rx, string Label, Severity Severity);
+    public sealed record LabelRule(Regex Rx, string Label);
+    public sealed record DomainRule(Regex Rx, string Label, Severity Severity);
 
     public string Path { get; }
     public IReadOnlyList<ToolRule> Tools { get; }
@@ -25,8 +27,21 @@ public sealed class RuleSet
     public IReadOnlyList<CommandRule> CommandLines { get; }
     public Regex? ShellbagFolderNames { get; }
 
+    // Web server logs (IIS, Tomcat)
+    public IReadOnlyList<LabelRule> WebAttacks { get; private init; } = Array.Empty<LabelRule>();
+    public Regex? WebSensitiveProbe { get; private init; }
+    public Regex? WebUploadDirScript { get; private init; }
+    public Regex? WebShellNames { get; private init; }
+    /// <summary>Command parameter handed to a script; has a "cmd" group.</summary>
+    public Regex? WebCommandParam { get; private init; }
+    public IReadOnlyList<LabelRule> WebScanners { get; private init; } = Array.Empty<LabelRule>();
+
+    /// <summary>Browser history: file sharing, paste, tunnel and remote-access domains (matched on the host name).</summary>
+    public IReadOnlyList<DomainRule> SuspiciousDomains { get; private init; } = Array.Empty<DomainRule>();
+
     public string Summary =>
-        $"{Tools.Count} tools, {StagingFolders.Count} staging folders, {CommandLines.Count} command-line patterns";
+        $"{Tools.Count} tools, {StagingFolders.Count} staging folders, {CommandLines.Count} command-line patterns, "
+        + $"{WebAttacks.Count + WebScanners.Count} web log patterns, {SuspiciousDomains.Count} domain patterns";
 
     private RuleSet(string path, List<ToolRule> tools, List<StagingRule> staging, List<CommandRule> commands, Regex? folders)
     {
@@ -91,7 +106,16 @@ public sealed class RuleSet
         public List<StagingDto>? StagingFolders { get; set; }
         public List<CommandDto>? CommandLines { get; set; }
         public string? ShellbagFolderNames { get; set; }
+        public List<LabelDto>? WebAttacks { get; set; }
+        public string? WebSensitiveProbe { get; set; }
+        public string? WebUploadDirScript { get; set; }
+        public string? WebShellNames { get; set; }
+        public string? WebCommandParam { get; set; }
+        public List<ScannerDto>? WebScanners { get; set; }
+        public List<CommandDto>? SuspiciousDomains { get; set; }
     }
+    private sealed class LabelDto { public string? Pattern { get; set; } public string? Label { get; set; } }
+    private sealed class ScannerDto { public string? Pattern { get; set; } public string? Tool { get; set; } }
     private sealed class ToolDto { public string? Name { get; set; } public string? Category { get; set; } public string? Severity { get; set; } public string? Group { get; set; } }
     private sealed class StagingDto { public string? Pattern { get; set; } public string? Label { get; set; } }
     private sealed class CommandDto { public string? Pattern { get; set; } public string? Label { get; set; } public string? Severity { get; set; } }
@@ -140,9 +164,45 @@ public sealed class RuleSet
 
         var folders = string.IsNullOrWhiteSpace(dto.ShellbagFolderNames) ? null : Compile(dto.ShellbagFolderNames, "shellbagFolderNames", errors);
 
+        var webAttacks = new List<LabelRule>();
+        foreach (var (w, i) in (dto.WebAttacks ?? new()).Select((w, i) => (w, i + 1)))
+        {
+            var rx = Compile(w.Pattern, $"webAttacks #{i}" + (string.IsNullOrWhiteSpace(w.Label) ? "" : $" ({w.Label})"), errors);
+            if (rx != null) webAttacks.Add(new LabelRule(rx, string.IsNullOrWhiteSpace(w.Label) ? "Web attack" : w.Label.Trim()));
+        }
+        var scanners = new List<LabelRule>();
+        foreach (var (w, i) in (dto.WebScanners ?? new()).Select((w, i) => (w, i + 1)))
+        {
+            var rx = Compile(w.Pattern, $"webScanners #{i}" + (string.IsNullOrWhiteSpace(w.Tool) ? "" : $" ({w.Tool})"), errors);
+            if (rx != null) scanners.Add(new LabelRule(rx, string.IsNullOrWhiteSpace(w.Tool) ? "scanner" : w.Tool.Trim()));
+        }
+        var domains = new List<DomainRule>();
+        foreach (var (d, i) in (dto.SuspiciousDomains ?? new()).Select((d, i) => (d, i + 1)))
+        {
+            var where = $"suspiciousDomains #{i}" + (string.IsNullOrWhiteSpace(d.Label) ? "" : $" ({d.Label})");
+            if (!TryParseSeverity(d.Severity ?? "Medium", out var sev)) { errors.Add($"{where}: severity '{d.Severity}' is not Critical, High, Medium or Suspicious"); continue; }
+            var rx = Compile(d.Pattern, where, errors);
+            if (rx != null) domains.Add(new DomainRule(rx, string.IsNullOrWhiteSpace(d.Label) ? "Suspicious domain" : d.Label.Trim(), sev));
+        }
+        Regex? Optional(string? p, string where) => string.IsNullOrWhiteSpace(p) ? null : Compile(p, where, errors);
+        var probe = Optional(dto.WebSensitiveProbe, "webSensitiveProbe");
+        var uploadDir = Optional(dto.WebUploadDirScript, "webUploadDirScript");
+        var shellNames = Optional(dto.WebShellNames, "webShellNames");
+        var cmdParam = Optional(dto.WebCommandParam, "webCommandParam");
+        if (cmdParam != null && !cmdParam.GetGroupNames().Contains("cmd")) errors.Add("webCommandParam: needs a (?<cmd>...) group");
+
         if (errors.Count > 0)
             throw new FormatException($"{FileName} has {errors.Count} problem(s): " + string.Join("; ", errors.Take(5)) + (errors.Count > 5 ? "; …" : ""));
-        return new RuleSet(path, tools, staging, commands, folders);
+        return new RuleSet(path, tools, staging, commands, folders)
+        {
+            WebAttacks = webAttacks,
+            WebScanners = scanners,
+            WebSensitiveProbe = probe,
+            WebUploadDirScript = uploadDir,
+            WebShellNames = shellNames,
+            WebCommandParam = cmdParam,
+            SuspiciousDomains = domains,
+        };
     }
 
     private static Regex? Compile(string? pattern, string where, List<string> errors)

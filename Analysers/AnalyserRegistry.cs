@@ -23,6 +23,9 @@ public static class AnalyserRegistry
         new RecycleBinAnalyser(),
         new SrumAnalyser(),
         new SigmaAnalyser(),
+        new BrowserAnalyser(),
+        new PowerShellHistoryAnalyser(),
+        new WebLogAnalyser(),
         new ShellbagsAnalyser(),
     };
 }

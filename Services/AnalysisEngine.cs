@@ -105,6 +105,9 @@ public sealed class AnalysisEngine
             progress((double)done / total);
         }
 
+        var raw = analysers.OfType<IRawFileAnalyser>().Where(a => a.Enabled(_config)).ToArray();
+        if (raw.Length > 0) AnalyseRawFiles(host, raw, ctx, ct);
+
         foreach (var a in analysers.Where(a => a.Enabled(_config)))
         {
             try { a.Complete(ctx); }
@@ -123,6 +126,77 @@ public sealed class AnalysisEngine
         _log($"[{host.Name}] {ctx.Findings.Count} finding(s): {crit} critical, {high} high — {sw.Elapsed:mm\\:ss}. QuickWins: {Path.Combine(outDir, HostReport.QuickWinsFile)}");
         try { QuickWinsRtf.Convert(outDir); }
         catch (Exception ex) { _log($"[WARN] [{host.Name}] RTF conversion failed: {ex.Message} — QuickWins.txt is still available."); }
+    }
+
+    /// <summary>
+    /// Raw files (PowerShell history, web server logs) from the host's KAPE
+    /// output folder and from its extracted collection in Decompressed\ (a
+    /// folder named like the host folder, or a DFIR ORC folder for the same
+    /// host). Each folder tree is listed once; a file found in both places
+    /// (same name, size and start) is read once.
+    /// </summary>
+    private void AnalyseRawFiles(KapeHost host, IRawFileAnalyser[] raw, AnalysisContext ctx, CancellationToken ct)
+    {
+        var outputBase = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_config.ResolveOutputPath())) + Path.DirectorySeparatorChar;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
+
+        foreach (var root in RawRoots(host, ctx))
+        {
+            IEnumerable<string> files;
+            try { files = Directory.EnumerateFiles(root, "*", options); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _log($"[WARN] [{host.Name}] Cannot list {root}: {ex.Message}"); continue; }
+
+            foreach (var file in files)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (file.StartsWith(outputBase, StringComparison.OrdinalIgnoreCase)) continue;
+                var a = raw.FirstOrDefault(x => x.AcceptsRaw(file));
+                if (a == null || !seen.Add(FileIdentity(file))) continue;
+                _log($"[{host.Name}] {a.Source}: {file}");
+                try { a.Analyse(file, ctx); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { _log($"[ERROR] [{host.Name}] {a.Source} {Path.GetFileName(file)}: {ex.Message}"); }
+            }
+        }
+    }
+
+    /// <summary>The host's KAPE output folder, plus its folder(s) in Decompressed\.</summary>
+    private IEnumerable<string> RawRoots(KapeHost host, AnalysisContext ctx)
+    {
+        yield return host.RootPath;
+        var decompressed = Path.Combine(_config.CaseFolderPath, "Decompressed");
+        if (!Directory.Exists(decompressed)) yield break;
+
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { host.Name };
+        if (KapeDiscovery.HostFromFolderName(host.Name) is { } orcHost) names.Add(orcHost);
+        if (ctx.HostnameVotes.OrderByDescending(kv => kv.Value).Select(kv => kv.Key).FirstOrDefault() is { } voted) names.Add(voted);
+
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(decompressed); } catch { yield break; }
+        var hostRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(host.RootPath)) + Path.DirectorySeparatorChar;
+        foreach (var d in dirs.OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+        {
+            var n = Path.GetFileName(d);
+            if (!names.Contains(n) && !(KapeDiscovery.HostFromFolderName(n) is { } h && names.Contains(h))) continue;
+            if (hostRoot.StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(d)) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;   // already listed
+            yield return d;
+        }
+    }
+
+    private static string FileIdentity(string path)
+    {
+        var fi = new FileInfo(path);
+        var head = new byte[4096];
+        int n = 0;
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            n = fs.Read(head, 0, head.Length);
+        }
+        catch (IOException) { return path; }
+        catch (UnauthorizedAccessException) { return path; }
+        return $"{fi.Name}|{fi.Length}|{Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(head.AsSpan(0, n)))}";
     }
 
     /// <summary>
